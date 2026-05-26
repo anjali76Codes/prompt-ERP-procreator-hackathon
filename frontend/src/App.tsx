@@ -18,6 +18,7 @@ import { ResourcesProvider } from './lib/resources/ResourcesContext';
 import { Resources } from './pages/Resources';
 import { ResourceUpload } from './pages/ResourceUpload';
 import { ResourcesList } from './pages/ResourcesList';
+import { ReviewSubmissions } from './pages/ReviewSubmissions';
 import { StudentResources } from './pages/StudentResources';
 import { AuthProvider } from './lib/auth/AuthContext';
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
@@ -92,6 +93,9 @@ const App = () => {
             } />
             <Route path="/assignments/list" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="assignment" /></ProtectedRoute>
+            } />
+            <Route path="/assignments/list/:id/review" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ReviewSubmissions /></ProtectedRoute>
             } />
             <Route path="/assignments/notes" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="notes" /></ProtectedRoute>

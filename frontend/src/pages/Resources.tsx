@@ -1,10 +1,9 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   ClipboardList, BookOpen, Search, Plus, ChevronRight, ArrowRight,
   FileText, FileCheck2, BarChart3, FolderOpen, Clock,
   Terminal, Database, Network, Slash, Brain, CheckCircle2, PencilLine,
-  Building2, MessageSquare
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useResources, type Resource } from '../lib/resources/ResourcesContext';
@@ -14,13 +13,21 @@ import type { Subject } from '../lib/erp/types';
 /*  Helpers                                                                   */
 /* -------------------------------------------------------------------------- */
 
-const subjectIcon = (iconType: string): React.ReactNode => {
-  if (iconType === 'os') return <Terminal size={18} />;
-  if (iconType === 'dbms') return <Database size={18} />;
-  if (iconType === 'network') return <Network size={18} />;
-  if (iconType === 'toc') return <Slash size={18} />;
-  if (iconType === 'ml') return <Brain size={18} />;
+const subjectIcon = (s: Subject): React.ReactNode => {
+  const text = `${s.code} ${s.name}`.toLowerCase();
+  if (/(operating|os|system)/.test(text)) return <Terminal size={18} />;
+  if (/(database|dbms|sql)/.test(text)) return <Database size={18} />;
+  if (/(network|tcp|protocol)/.test(text)) return <Network size={18} />;
+  if (/(theory|computation|automata|formal)/.test(text)) return <Slash size={18} />;
+  if (/(machine|learning|ai|neural|deep)/.test(text)) return <Brain size={18} />;
   return <BookOpen size={18} />;
+};
+
+const subjectTag = (s: Subject): string => {
+  if (s.credits >= 4) return 'Core Engineering';
+  if (s.credits === 3) return 'Theory';
+  if (s.credits === 2) return 'Elective';
+  return 'Advanced';
 };
 
 const relTime = (iso: string): string => {
@@ -44,115 +51,28 @@ export const Resources: React.FC = () => {
 
   const [subjectQuery, setSubjectQuery] = useState('');
 
-  // 1. Division display list mapped to real TE divisions +IT-B fallback
-  const divisionList = useMemo(() => {
-    return [
-      {
-        id: divisions.find(d => d.code === 'TE-A')?._id || 'te-a-mock-id',
-        code: 'CS-A',
-        name: 'COMPUTER SCIENCE',
-        realCode: 'TE-A',
-      },
-      {
-        id: divisions.find(d => d.code === 'TE-B')?._id || 'te-b-mock-id',
-        code: 'CS-B',
-        name: 'COMPUTER SCIENCE',
-        realCode: 'TE-B',
-      },
-      {
-        id: divisions.find(d => d.code === 'TE-C')?._id || 'te-c-mock-id',
-        code: 'IT-A',
-        name: 'INFORMATION TECH',
-        realCode: 'TE-C',
-      },
-      {
-        id: 'te-d-mock-id',
-        code: 'IT-B',
-        name: 'INFORMATION TECH',
-        realCode: 'TE-D',
-      },
-    ];
-  }, [divisions]);
-
-  // Subjects filtered to selected division's year + branch
+  // Subjects filtered to selected division's year + branch.
   const scopedSubjects = useMemo(() => {
     if (!divisionId) return [] as Subject[];
-    const selectedListDiv = divisionList.find(d => d.id === divisionId);
-    const div = divisions.find(d => d._id === divisionId) || divisions.find(d => d.code === selectedListDiv?.realCode);
+    const div = divisions.find(d => d._id === divisionId);
     if (!div) return subjects;
     const branchId = typeof div.branch === 'string' ? div.branch : div.branch._id;
     return subjects.filter(s => {
       const sb = typeof s.branch === 'string' ? s.branch : s.branch._id;
       return s.year === div.year && sb === branchId;
     });
-  }, [divisions, subjects, divisionId, divisionList]);
-
-  // 2. Subject list mapped to specific names and visual representations
-  const subjectList = useMemo(() => {
-    return [
-      {
-        id: scopedSubjects.find(s => s.code === 'CS-302')?._id || 'mock-os-id',
-        code: 'CS-302',
-        name: 'Operating Systems',
-        tag: 'Sem V · Core Engineering',
-        iconType: 'os',
-      },
-      {
-        id: scopedSubjects.find(s => s.code === 'CS-303')?._id || 'mock-dbms-id',
-        code: 'CS-303',
-        name: 'DBMS Architecture',
-        tag: 'Sem V · Core Engineering',
-        iconType: 'dbms',
-      },
-      {
-        id: scopedSubjects.find(s => s.code === 'CS-301')?._id || 'mock-network-id',
-        code: 'CS-301',
-        name: 'Comp. Networks',
-        tag: 'Sem V · Elective',
-        iconType: 'network',
-      },
-      {
-        id: 'mock-toc-id',
-        code: 'CS-305',
-        name: 'Theory of Comp.',
-        tag: 'Sem V · Theory',
-        iconType: 'toc',
-      },
-      {
-        id: scopedSubjects.find(s => s.code === 'CS-304')?._id || 'mock-ml-id',
-        code: 'CS-304',
-        name: 'Machine Learning',
-        tag: 'Sem V · Advanced',
-        iconType: 'ml',
-      },
-    ];
-  }, [scopedSubjects]);
+  }, [divisions, subjects, divisionId]);
 
   const filteredSubjects = useMemo(() => {
     const q = subjectQuery.trim().toLowerCase();
-    if (!q) return subjectList;
-    return subjectList.filter(s =>
-      s.name.toLowerCase().includes(q) || s.code.toLowerCase().includes(q)
+    if (!q) return scopedSubjects;
+    return scopedSubjects.filter(s =>
+      s.code.toLowerCase().includes(q) || s.name.toLowerCase().includes(q)
     );
-  }, [subjectList, subjectQuery]);
+  }, [scopedSubjects, subjectQuery]);
 
-  // Set default selection to CS-B and DBMS Architecture to match the screenshot
-  useEffect(() => {
-    if (!divisionId && divisions.length > 0) {
-      const targetDiv = divisions.find(d => d.code === 'TE-B') || divisions[0];
-      if (targetDiv) selectDivision(targetDiv._id);
-    }
-  }, [divisions, divisionId, selectDivision]);
-
-  useEffect(() => {
-    if (divisionId && !subjectId && scopedSubjects.length > 0) {
-      const targetSub = scopedSubjects.find(s => s.code === 'CS-303') || scopedSubjects[0];
-      if (targetSub) selectSubject(targetSub._id);
-    }
-  }, [scopedSubjects, divisionId, subjectId, selectSubject]);
-
-  const selectedDivision = divisionList.find(d => d.id === divisionId) ?? null;
-  const selectedSubject  = subjectList.find(s => s.id === subjectId) ?? null;
+  const selectedDivision = divisions.find(d => d._id === divisionId) ?? null;
+  const selectedSubject  = subjects.find(s => s._id === subjectId) ?? null;
   const ready = !!divisionId && !!subjectId;
 
   const currentItems = useMemo(
@@ -168,59 +88,39 @@ export const Resources: React.FC = () => {
     if (!ready) return;
     navigate(`/assignments/upload/${kind}`);
   };
-
   const goList = (kind: 'assignment' | 'notes') => () => {
     if (!ready) return;
     navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
   };
 
-  const displayDivCode = selectedDivision ? selectedDivision.code : 'CS-B';
-  const displaySubCode = selectedSubject ? (selectedSubject.name === 'DBMS Architecture' ? 'DBMS' : selectedSubject.name) : 'DBMS';
-
-  // Recent Activities
-  const recentActivities = useMemo(() => {
-    if (currentItems.length > 0) {
-      return currentItems.map(item => ({
-        _id: item._id,
-        title: item.status === 'published' ? `Published: ${item.title}` : `Draft: ${item.title}`,
-        subtitle: `${selectedSubject?.name || 'DBMS Architecture'} • ${item.status === 'published' ? 'Uploaded by You' : 'Saved as draft'} • ${relTime(item.updatedAt)}`,
-        status: item.status,
-      }));
-    }
-    return [
-      {
-        _id: 'mock-act-1',
-        title: 'Published: Module 3 Notes (Normalization)',
-        subtitle: 'DBMS Architecture • Uploaded by You • 2 hours ago',
-        status: 'published' as const,
-      },
-      {
-        _id: 'mock-act-2',
-        title: 'New Submission: SQL Lab Assignment (34/40 students)',
-        subtitle: 'DBMS Architecture • Action Required: Review • 5 hours ago',
-        status: 'pending' as const,
-      },
-      {
-        _id: 'mock-act-3',
-        title: 'Draft: Final Project Guidelines',
-        subtitle: 'Saved as draft • Last edited yesterday at 4:30 PM',
-        status: 'draft' as const,
-      }
-    ];
-  }, [currentItems, selectedSubject]);
-
   return (
-    <AppLayout background="#F8FAFC">
-      <div style={{ position: 'relative', paddingBottom: '1rem', minHeight: 'calc(100vh - 100px)', display: 'flex', flexDirection: 'column' }}>
-        {/* Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: '0.75rem', fontSize: '0.72rem', fontWeight: 700, letterSpacing: '0.6px' }}>
-          <span style={{ color: '#64748B' }}>COURSES</span>
-          <span style={{ color: '#94A3B8', fontWeight: 400 }}>&gt;</span>
-          <span style={{ color: '#0047FF' }}>ASSIGNMENTS & NOTES</span>
-        </div>
-
+    <AppLayout
+      background="#F8FAFC"
+      pageIcon={<ClipboardList size={18} />}
+      pageTitle="Assignments & Notes"
+      pageBreadcrumb={
+        <>
+          <span style={{ textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 700 }}>Courses</span>
+          <ChevronRight size={11} />
+          <span className="current" style={{ textTransform: 'uppercase', letterSpacing: '0.6px', fontWeight: 700 }}>
+            Assignments & Notes
+          </span>
+        </>
+      }
+      pageActions={
+        <button
+          className="btn btn-primary"
+          onClick={goUpload('assignment')}
+          disabled={!ready}
+          title={ready ? 'Start a new upload' : 'Pick a division and subject first'}
+        >
+          <Plus size={14} /> New Upload
+        </button>
+      }
+    >
+      <div style={{ position: 'relative', paddingBottom: '2rem' }}>
         {/* Heading */}
-        <div style={{ marginBottom: '1.75rem' }}>
+        <div style={{ marginBottom: '1.5rem' }}>
           <h1 style={{ margin: 0, fontSize: '1.75rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.2 }}>
             Academic Resource Center
           </h1>
@@ -235,452 +135,78 @@ export const Resources: React.FC = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(280px, 1fr) minmax(420px, 1.8fr)',
+            gridTemplateColumns: 'minmax(280px, 1fr) minmax(420px, 1.6fr)',
             gap: '1.25rem',
-            marginBottom: '1.5rem',
+            marginBottom: '1.25rem',
           }}
         >
-          {/* Division Selector */}
-          <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-              <div
-                style={{
-                  width: 40, height: 40, borderRadius: 'var(--radius-md)',
-                  background: '#EEF2FF', color: '#4F46E5',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              >
-                <Building2 size={18} />
-              </div>
-              <button
-                onClick={() => selectDivision(null)}
-                style={{
-                  fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px',
-                  background: 'none', border: 'none', color: '#0047FF', cursor: 'pointer'
-                }}
-              >
-                SELECT DIVISION
-              </button>
-            </div>
+          <DivisionSelector
+            divisions={divisions}
+            loading={loading.divisions}
+            selectedId={divisionId}
+            onSelect={selectDivision}
+          />
 
-            <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
-              Academic Division
-            </h2>
-
-            {loading.divisions ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
-                Loading divisions…
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
-                {divisionList.map(d => {
-                  const active = d.id === divisionId;
-                  return (
-                    <button
-                      key={d.id}
-                      onClick={() => selectDivision(d.id)}
-                      style={{
-                        textAlign: 'left', cursor: 'pointer',
-                        padding: '0.85rem 0.95rem',
-                        borderRadius: 'var(--radius-md)',
-                        border: `1.5px solid ${active ? '#0047FF' : '#E2E8F0'}`,
-                        background: active ? '#EFF6FF' : 'white',
-                        display: 'flex', flexDirection: 'column', gap: '0.25rem',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <span style={{ fontSize: '0.95rem', fontWeight: 800, color: active ? '#0047FF' : '#0F172A' }}>
-                        {d.code}
-                      </span>
-                      <span
-                        style={{
-                          fontSize: '0.65rem', fontWeight: 700, color: '#64748B',
-                          textTransform: 'uppercase', letterSpacing: '0.5px',
-                        }}
-                      >
-                        {d.name}
-                      </span>
-                    </button>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-
-          {/* Subject Selector */}
-          <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-              <div
-                style={{
-                  width: 40, height: 40, borderRadius: 'var(--radius-md)',
-                  background: '#FFE4E6', color: '#E11D48',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                }}
-              >
-                <BookOpen size={18} />
-              </div>
-
-              <div
-                style={{
-                  flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
-                  padding: '0.4rem 0.6rem', border: '1px solid #E2E8F0',
-                  borderRadius: 'var(--radius-md)', background: 'white',
-                }}
-              >
-                <Search size={13} color="#94A3B8" />
-                <input
-                  value={subjectQuery}
-                  onChange={e => setSubjectQuery(e.target.value)}
-                  placeholder="Filter subjects..."
-                  disabled={!divisionId}
-                  style={{
-                    flex: 1, border: 'none', outline: 'none', background: 'transparent',
-                    fontSize: '0.8rem', fontFamily: 'inherit',
-                  }}
-                />
-              </div>
-
-              <button
-                onClick={() => selectSubject(null)}
-                style={{
-                  fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px',
-                  background: 'none', border: 'none', color: '#0047FF', cursor: 'pointer'
-                }}
-              >
-                SELECT SUBJECT
-              </button>
-            </div>
-
-            {!divisionId ? (
-              <div
-                style={{
-                  padding: '2.5rem 1rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem',
-                  border: '1.5px dashed #CBD5E1', borderRadius: 'var(--radius-md)', background: '#F8FAFC',
-                }}
-              >
-                Pick a division on the left to see its subjects.
-              </div>
-            ) : loading.subjects ? (
-              <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
-                Loading subjects…
-              </div>
-            ) : (
-              <div
-                style={{
-                  display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem',
-                }}
-              >
-                {filteredSubjects.map(s => {
-                  const active = s.id === subjectId;
-                  return (
-                    <button
-                      key={s.id}
-                      onClick={() => selectSubject(s.id)}
-                      style={{
-                        textAlign: 'left', cursor: 'pointer',
-                        padding: '0.8rem 0.85rem',
-                        borderRadius: 'var(--radius-md)',
-                        border: `1.5px solid ${active ? '#0047FF' : '#E2E8F0'}`,
-                        background: active ? '#EFF6FF' : 'white',
-                        display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
-                        transition: 'border-color 0.15s, background 0.15s',
-                      }}
-                    >
-                      <span
-                        style={{
-                          width: 28, height: 28, borderRadius: '0.4rem',
-                          background: active ? '#DBEAFE' : '#F1F5F9',
-                          color: active ? '#0047FF' : '#475569',
-                          display: 'flex', alignItems: 'center', justifyContent: 'center',
-                          flexShrink: 0,
-                        }}
-                      >
-                        {subjectIcon(s.iconType)}
-                      </span>
-                      <div style={{ minWidth: 0 }}>
-                        <div
-                          style={{
-                            fontSize: '0.82rem', fontWeight: 800,
-                            color: active ? '#0047FF' : '#0F172A',
-                            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                          }}
-                        >
-                          {s.name}
-                        </div>
-                        <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '0.15rem' }}>
-                          {s.tag}
-                        </div>
-                      </div>
-                    </button>
-                  );
-                })}
-
-                {/* Request subject placeholder tile */}
-                <button
-                  type="button"
-                  style={{
-                    textAlign: 'center', cursor: 'pointer',
-                    padding: '0.8rem', borderRadius: 'var(--radius-md)',
-                    border: '1.5px dashed #CBD5E1', background: '#F8FAFC',
-                    color: '#64748B', fontSize: '0.78rem', fontWeight: 700,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  }}
-                  title="Request a new subject from your department admin"
-                >
-                  + Request Subject
-                </button>
-              </div>
-            )}
-          </div>
+          <SubjectSelector
+            subjects={filteredSubjects}
+            totalSubjects={scopedSubjects.length}
+            divisionPicked={!!divisionId}
+            loading={loading.subjects}
+            selectedId={subjectId}
+            query={subjectQuery}
+            onQueryChange={setSubjectQuery}
+            onSelect={selectSubject}
+          />
         </div>
 
         {/* ------------------ Row 2 — Action cards ------------------------------- */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '2rem' }}>
-          {/* Manage Assignments Card */}
-          <div
-            className="card"
-            style={{ padding: '1.5rem', position: 'relative', overflow: 'hidden', minHeight: 250, display: 'flex', flexDirection: 'column' }}
-          >
-            {/* Faded Background Icon */}
-            <div
-              aria-hidden
-              style={{
-                position: 'absolute', right: -10, top: '0.75rem',
-                color: '#F1F5F9', pointerEvents: 'none',
-              }}
-            >
-              <FileCheck2 size={92} />
-            </div>
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.75rem' }}>
+          <ActionCard
+            tone="blue"
+            decorIcon={<FileCheck2 size={92} />}
+            title="Manage Assignments"
+            description={ready && selectedDivision && selectedSubject
+              ? `Create new assignments, set deadlines, and evaluate student submissions for ${selectedDivision.code} ${selectedSubject.code}.`
+              : 'Pick a division and subject above to manage its assignments.'}
+            primary={{
+              label: 'Create & Upload New Assignment',
+              icon: <PencilLine size={14} />,
+              onClick: goUpload('assignment'),
+              disabled: !ready,
+            }}
+            secondary={[
+              { label: 'Review Pending', icon: <FileCheck2 size={13} />, onClick: goList('assignment'), disabled: !ready },
+              { label: 'Grade Reports',  icon: <BarChart3 size={13} />, onClick: goList('assignment'), disabled: !ready },
+            ]}
+          />
 
-            <div
-              style={{
-                width: 44, height: 44, borderRadius: 'var(--radius-md)',
-                background: '#0047FF', color: 'white',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: '1.25rem', zIndex: 1,
-              }}
-            >
-              <ClipboardList size={20} />
-            </div>
-
-            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', zIndex: 1 }}>
-              Manage Assignments
-            </h3>
-            <p style={{ margin: '0.5rem 0 1.25rem', color: '#475569', fontSize: '0.85rem', lineHeight: 1.55, zIndex: 1, flex: 1 }}>
-              Create new assignments, set deadlines, and evaluate student submissions for {displayDivCode} {displaySubCode}.
-            </p>
-
-            <button
-              onClick={goUpload('assignment')}
-              disabled={!ready}
-              style={{
-                width: '100%', padding: '0.7rem 1.5rem',
-                borderRadius: 'var(--radius-md)', border: 'none',
-                background: '#0047FF', color: 'white',
-                fontWeight: 700, fontSize: '0.86rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                cursor: ready ? 'pointer' : 'not-allowed',
-                opacity: ready ? 1 : 0.6,
-                transition: 'opacity 0.15s',
-                zIndex: 1,
-              }}
-            >
-              <PencilLine size={14} /> Create & Upload New Assignment
-            </button>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.65rem', zIndex: 1 }}>
-              <button
-                onClick={goList('assignment')}
-                disabled={!ready}
-                style={{
-                  padding: '0.55rem 0.75rem',
-                  border: '1px solid #E2E8F0', background: 'white',
-                  borderRadius: 'var(--radius-md)',
-                  color: '#334155', fontSize: '0.78rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-                  cursor: ready ? 'pointer' : 'not-allowed',
-                  opacity: ready ? 1 : 0.55,
-                }}
-              >
-                <FileCheck2 size={13} /> Review Pending
-              </button>
-              <button
-                onClick={goList('assignment')}
-                disabled={!ready}
-                style={{
-                  padding: '0.55rem 0.75rem',
-                  border: '1px solid #E2E8F0', background: 'white',
-                  borderRadius: 'var(--radius-md)',
-                  color: '#334155', fontSize: '0.78rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-                  cursor: ready ? 'pointer' : 'not-allowed',
-                  opacity: ready ? 1 : 0.55,
-                }}
-              >
-                <BarChart3 size={13} /> Grade Reports
-              </button>
-            </div>
-          </div>
-
-          {/* Course Notes Card */}
-          <div
-            className="card"
-            style={{ padding: '1.5rem', position: 'relative', overflow: 'hidden', minHeight: 250, display: 'flex', flexDirection: 'column' }}
-          >
-            {/* Faded Background Icon */}
-            <div
-              aria-hidden
-              style={{
-                position: 'absolute', right: -10, top: '0.75rem',
-                color: '#F1F5F9', pointerEvents: 'none',
-              }}
-            >
-              <BookOpen size={92} />
-            </div>
-
-            <div
-              style={{
-                width: 44, height: 44, borderRadius: 'var(--radius-md)',
-                background: '#0047FF', color: 'white',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                marginBottom: '1.25rem', zIndex: 1,
-              }}
-            >
-              <FileText size={20} />
-            </div>
-
-            <h3 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', zIndex: 1 }}>
-              Course Notes
-            </h3>
-            <p style={{ margin: '0.5rem 0 1.25rem', color: '#475569', fontSize: '0.85rem', lineHeight: 1.55, zIndex: 1, flex: 1 }}>
-              Distribute lecture slides, reading materials, and supplementary PDFs for academic reference.
-            </p>
-
-            <button
-              onClick={goUpload('notes')}
-              disabled={!ready}
-              style={{
-                width: '100%', padding: '0.7rem 1.5rem',
-                borderRadius: 'var(--radius-md)', border: 'none',
-                background: '#EEF2FF', color: '#0047FF',
-                fontWeight: 700, fontSize: '0.86rem',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
-                cursor: ready ? 'pointer' : 'not-allowed',
-                opacity: ready ? 1 : 0.6,
-                transition: 'opacity 0.15s',
-                zIndex: 1,
-              }}
-            >
-              <FileText size={14} /> Upload New Study Materials
-            </button>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.65rem', zIndex: 1 }}>
-              <button
-                onClick={goList('notes')}
-                disabled={!ready}
-                style={{
-                  padding: '0.55rem 0.75rem',
-                  border: '1px solid #E2E8F0', background: 'white',
-                  borderRadius: 'var(--radius-md)',
-                  color: '#334155', fontSize: '0.78rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-                  cursor: ready ? 'pointer' : 'not-allowed',
-                  opacity: ready ? 1 : 0.55,
-                }}
-              >
-                <FolderOpen size={13} /> Resource Library
-              </button>
-              <button
-                disabled={true}
-                style={{
-                  padding: '0.55rem 0.75rem',
-                  border: '1px solid #E2E8F0', background: 'white',
-                  borderRadius: 'var(--radius-md)',
-                  color: '#334155', fontSize: '0.78rem', fontWeight: 700,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
-                  cursor: 'not-allowed', opacity: 0.55,
-                }}
-              >
-                <Clock size={13} /> Past Semesters
-              </button>
-            </div>
-          </div>
+          <ActionCard
+            tone="lavender"
+            decorIcon={<BookOpen size={92} />}
+            title="Course Notes"
+            description={ready && selectedDivision && selectedSubject
+              ? `Distribute lecture slides, reading materials, and supplementary PDFs for ${selectedSubject.name}.`
+              : 'Pick a division and subject above to publish study material.'}
+            primary={{
+              label: 'Upload New Study Materials',
+              icon: <FileText size={14} />,
+              onClick: goUpload('notes'),
+              disabled: !ready,
+              variant: 'soft',
+            }}
+            secondary={[
+              { label: 'Resource Library', icon: <FolderOpen size={13} />, onClick: goList('notes'), disabled: !ready },
+              { label: 'Past Semesters',   icon: <Clock size={13} />,     onClick: () => { /* placeholder */ }, disabled: true },
+            ]}
+          />
         </div>
 
         {/* ------------------ Recent activity ------------------------------------ */}
-        <div style={{ marginBottom: '3rem' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-              Recent Activity in {displayDivCode}
-            </h3>
-            <button
-              onClick={() => navigate('/assignments/list')}
-              style={{
-                background: 'none', border: 'none', color: '#0047FF', cursor: 'pointer',
-                fontSize: '0.8rem', fontWeight: 700, display: 'inline-flex', alignItems: 'center', gap: '0.3rem'
-              }}
-            >
-              View Full History <ArrowRight size={12} />
-            </button>
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
-            {recentActivities.slice(0, 3).map(act => {
-              // Decide icon / colors based on status
-              let bg = '#F1F5F9';
-              let color = '#475569';
-              let icon = <PencilLine size={16} />;
-              let statusLabel = 'DRAFT';
-              let statusCls = 'muted';
-
-              if (act.status === 'published') {
-                bg = '#DCFCE7';
-                color = '#16A34A';
-                icon = <CheckCircle2 size={16} />;
-                statusLabel = 'PUBLISHED';
-                statusCls = 'success';
-              } else if (act.status === 'pending') {
-                bg = '#FEF3C7';
-                color = '#B45309';
-                icon = <MessageSquare size={16} />;
-                statusLabel = 'PENDING';
-                statusCls = 'warning';
-              }
-
-              return (
-                <div
-                  key={act._id}
-                  className="card"
-                  style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', padding: '0.85rem 1rem' }}
-                >
-                  <div
-                    style={{
-                      width: 32, height: 32, borderRadius: '50%',
-                      background: bg, color: color,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-                    }}
-                  >
-                    {icon}
-                  </div>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0F172A' }}>
-                      {act.title}
-                    </div>
-                    <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.15rem' }}>
-                      {act.subtitle}
-                    </div>
-                  </div>
-                  <span
-                    className={`status-pill ${statusCls}`}
-                    style={{ fontSize: '0.62rem', letterSpacing: '0.6px' }}
-                  >
-                    {statusLabel}
-                  </span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+        <RecentActivity
+          divisionLabel={selectedDivision?.code ?? null}
+          subjectLabel={selectedSubject?.code ?? null}
+          items={currentItems}
+        />
 
         {/* FAB */}
         <button
@@ -691,7 +217,7 @@ export const Resources: React.FC = () => {
           style={{
             position: 'fixed', right: '2rem', bottom: '2rem',
             width: 52, height: 52, borderRadius: '50%',
-            background: ready ? '#0047FF' : '#94A3B8',
+            background: ready ? 'var(--primary)' : '#94A3B8',
             color: 'white', border: 'none', cursor: ready ? 'pointer' : 'not-allowed',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
             boxShadow: '0 8px 16px rgba(15, 23, 42, 0.15)',
@@ -700,84 +226,431 @@ export const Resources: React.FC = () => {
         >
           <Plus size={22} />
         </button>
-
-        {/* Footer */}
-        <footer style={{
-          marginTop: 'auto',
-          padding: '2.5rem 0 1.5rem 0',
-          borderTop: '1px solid #E2E8F0',
-          width: '100%',
-        }}>
-          <div style={{
-            display: 'grid',
-            gridTemplateColumns: '1.5fr repeat(3, 1fr)',
-            gap: '2.5rem',
-            marginBottom: '2rem',
-          }}>
-            {/* Col 1 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '1.1rem', fontWeight: 800, color: '#0047FF', letterSpacing: '-0.3px' }}>
-                Prompt ERP
-              </span>
-              <p style={{ fontSize: '0.82rem', color: '#64748B', lineHeight: 1.5, margin: 0, maxWidth: '280px' }}>
-                An integrated institutional workflow management system designed for systematic academic excellence.
-              </p>
-            </div>
-
-            {/* Col 2 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                Resources
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Faculty Handbook</a>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Grading Policy</a>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Admin Support</a>
-              </div>
-            </div>
-
-            {/* Col 3 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                Direct Actions
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Attendance Registry</a>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Exam Portal</a>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Result Analytics</a>
-              </div>
-            </div>
-
-            {/* Col 4 */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#475569', letterSpacing: '0.5px', textTransform: 'uppercase' }}>
-                Institutional
-              </span>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Department News</a>
-                <a href="#" style={{ fontSize: '0.82rem', color: '#64748B', textDecoration: 'none' }}>Staff Directory</a>
-              </div>
-            </div>
-          </div>
-
-          {/* Bottom Bar */}
-          <div style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            paddingTop: '1.25rem',
-            borderTop: '1px solid #E2E8F0',
-            fontSize: '0.75rem',
-            color: '#94A3B8',
-          }}>
-            <span>© 2024 Prompt ERP Systems. All intellectual property secured.</span>
-            <div style={{ display: 'flex', gap: '1.5rem' }}>
-              <a href="#" style={{ color: '#94A3B8', textDecoration: 'none' }}>Privacy Policy</a>
-              <a href="#" style={{ color: '#94A3B8', textDecoration: 'none' }}>Terms of Service</a>
-            </div>
-          </div>
-        </footer>
       </div>
     </AppLayout>
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Division selector                                                          */
+/* -------------------------------------------------------------------------- */
+
+interface DivisionSelectorProps {
+  divisions: ReturnType<typeof useResources>['divisions'];
+  loading: boolean;
+  selectedId: string | null;
+  onSelect: (id: string | null) => void;
+}
+
+const DivisionSelector: React.FC<DivisionSelectorProps> = ({
+  divisions, loading, selectedId, onSelect,
+}) => (
+  <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+      <div
+        style={{
+          width: 40, height: 40, borderRadius: 'var(--radius-md)',
+          background: '#EEF2FF', color: 'var(--primary)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+      >
+        <ClipboardList size={18} />
+      </div>
+      <button
+        onClick={() => onSelect(null)}
+        className="alert-row-cta"
+        style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px' }}
+      >
+        SELECT DIVISION
+      </button>
+    </div>
+
+    <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+      Academic Division
+    </h2>
+
+    {loading ? (
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+        Loading divisions…
+      </div>
+    ) : divisions.length === 0 ? (
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+        No divisions assigned to you yet.
+      </div>
+    ) : (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.65rem' }}>
+        {divisions.map(d => {
+          const branch = typeof d.branch === 'string' ? '' : d.branch.name;
+          const active = d._id === selectedId;
+          return (
+            <button
+              key={d._id}
+              onClick={() => onSelect(d._id)}
+              style={{
+                textAlign: 'left', cursor: 'pointer',
+                padding: '0.85rem 0.95rem',
+                borderRadius: 'var(--radius-md)',
+                border: `1.5px solid ${active ? 'var(--primary)' : '#E2E8F0'}`,
+                background: active ? '#EFF6FF' : 'white',
+                display: 'flex', flexDirection: 'column', gap: '0.25rem',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <span style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+                {d.code}
+              </span>
+              <span
+                style={{
+                  fontSize: '0.65rem', fontWeight: 700, color: '#64748B',
+                  textTransform: 'uppercase', letterSpacing: '0.5px',
+                }}
+              >
+                {branch || d.name}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Subject selector                                                           */
+/* -------------------------------------------------------------------------- */
+
+interface SubjectSelectorProps {
+  subjects: Subject[];
+  totalSubjects: number;
+  divisionPicked: boolean;
+  loading: boolean;
+  selectedId: string | null;
+  query: string;
+  onQueryChange: (q: string) => void;
+  onSelect: (id: string | null) => void;
+}
+
+const SubjectSelector: React.FC<SubjectSelectorProps> = ({
+  subjects, totalSubjects, divisionPicked, loading, selectedId, query, onQueryChange, onSelect,
+}) => (
+  <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+      <div
+        style={{
+          width: 40, height: 40, borderRadius: 'var(--radius-md)',
+          background: '#FFE4E6', color: '#E11D48',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+        }}
+      >
+        <BookOpen size={18} />
+      </div>
+
+      <div
+        style={{
+          flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
+          padding: '0.4rem 0.6rem', border: '1px solid #E2E8F0',
+          borderRadius: 'var(--radius-md)', background: '#F8FAFC',
+        }}
+      >
+        <Search size={13} color="#94A3B8" />
+        <input
+          value={query}
+          onChange={e => onQueryChange(e.target.value)}
+          placeholder="Filter subjects..."
+          disabled={!divisionPicked}
+          style={{
+            flex: 1, border: 'none', outline: 'none', background: 'transparent',
+            fontSize: '0.8rem', fontFamily: 'inherit',
+          }}
+        />
+      </div>
+
+      <button
+        onClick={() => onSelect(null)}
+        className="alert-row-cta"
+        style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px' }}
+      >
+        SELECT SUBJECT
+      </button>
+    </div>
+
+    {!divisionPicked ? (
+      <div
+        style={{
+          padding: '2rem 1rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem',
+          border: '1.5px dashed #CBD5E1', borderRadius: 'var(--radius-md)', background: '#F8FAFC',
+        }}
+      >
+        Pick a division on the left to see its subjects.
+      </div>
+    ) : loading ? (
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+        Loading subjects…
+      </div>
+    ) : totalSubjects === 0 ? (
+      <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
+        No subjects mapped to this division yet.
+      </div>
+    ) : (
+      <div
+        style={{
+          display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0.65rem',
+        }}
+      >
+        {subjects.map(s => {
+          const active = s._id === selectedId;
+          return (
+            <button
+              key={s._id}
+              onClick={() => onSelect(s._id)}
+              style={{
+                textAlign: 'left', cursor: 'pointer',
+                padding: '0.8rem 0.85rem',
+                borderRadius: 'var(--radius-md)',
+                border: `1.5px solid ${active ? 'var(--primary)' : '#E2E8F0'}`,
+                background: active ? '#EFF6FF' : 'white',
+                display: 'flex', alignItems: 'flex-start', gap: '0.6rem',
+                transition: 'border-color 0.15s, background 0.15s',
+              }}
+            >
+              <span
+                style={{
+                  width: 28, height: 28, borderRadius: '0.4rem',
+                  background: active ? '#DBEAFE' : '#F1F5F9',
+                  color: active ? 'var(--primary)' : '#475569',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}
+              >
+                {subjectIcon(s)}
+              </span>
+              <div style={{ minWidth: 0 }}>
+                <div
+                  style={{
+                    fontSize: '0.82rem', fontWeight: 800,
+                    color: active ? 'var(--primary)' : '#0F172A',
+                    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+                  }}
+                >
+                  {s.name}
+                </div>
+                <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: '0.15rem' }}>
+                  Sem {s.year} · {subjectTag(s)}
+                </div>
+              </div>
+            </button>
+          );
+        })}
+
+        {/* Request subject placeholder tile */}
+        <button
+          type="button"
+          onClick={() => { /* no-op for now */ }}
+          style={{
+            textAlign: 'center', cursor: 'pointer',
+            padding: '0.8rem', borderRadius: 'var(--radius-md)',
+            border: '1.5px dashed #CBD5E1', background: '#F8FAFC',
+            color: '#64748B', fontSize: '0.78rem', fontWeight: 700,
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+          }}
+          title="Request a new subject from your department admin"
+        >
+          + Request Subject
+        </button>
+      </div>
+    )}
+  </div>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Action card                                                                */
+/* -------------------------------------------------------------------------- */
+
+interface ActionButtonSpec {
+  label: string;
+  icon: React.ReactNode;
+  onClick: () => void;
+  disabled?: boolean;
+  variant?: 'solid' | 'soft';
+}
+
+interface ActionCardProps {
+  tone: 'blue' | 'lavender';
+  decorIcon: React.ReactNode;
+  title: string;
+  description: string;
+  primary: ActionButtonSpec;
+  secondary: ActionButtonSpec[];
+}
+
+const ActionCard: React.FC<ActionCardProps> = ({
+  tone, decorIcon, title, description, primary, secondary,
+}) => {
+  const accent = tone === 'lavender' ? '#6366F1' : 'var(--primary)';
+  const iconBg = tone === 'lavender' ? '#EEF2FF' : '#DBEAFE';
+  const softBg = tone === 'lavender' ? '#EEF2FF' : '#DBEAFE';
+  const softText = tone === 'lavender' ? '#4F46E5' : 'var(--primary)';
+
+  return (
+    <div
+      className="card"
+      style={{ padding: '1.5rem', position: 'relative', overflow: 'hidden', minHeight: 270 }}
+    >
+      {/* Decorative faded icon */}
+      <div
+        aria-hidden
+        style={{
+          position: 'absolute', right: -10, top: '0.75rem',
+          color: '#E2E8F0', opacity: 0.6, pointerEvents: 'none',
+        }}
+      >
+        {decorIcon}
+      </div>
+
+      {/* Icon */}
+      <div
+        style={{
+          width: 46, height: 46, borderRadius: 'var(--radius-md)',
+          background: iconBg, color: accent,
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          marginBottom: '1.5rem',
+        }}
+      >
+        {tone === 'lavender' ? <FileText size={20} /> : <ClipboardList size={20} />}
+      </div>
+
+      <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>{title}</h3>
+      <p style={{ margin: '0.5rem 0 1.25rem', color: '#475569', fontSize: '0.86rem', lineHeight: 1.55 }}>
+        {description}
+      </p>
+
+      <button
+        onClick={primary.onClick}
+        disabled={primary.disabled}
+        style={{
+          width: '100%', padding: '0.7rem 1rem',
+          borderRadius: 'var(--radius-md)', border: 'none',
+          background: primary.variant === 'soft' ? softBg : accent,
+          color: primary.variant === 'soft' ? softText : 'white',
+          fontWeight: 700, fontSize: '0.86rem',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.5rem',
+          cursor: primary.disabled ? 'not-allowed' : 'pointer',
+          opacity: primary.disabled ? 0.6 : 1,
+          transition: 'opacity 0.15s',
+        }}
+      >
+        {primary.icon} {primary.label}
+      </button>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginTop: '0.65rem' }}>
+        {secondary.map(btn => (
+          <button
+            key={btn.label}
+            onClick={btn.onClick}
+            disabled={btn.disabled}
+            style={{
+              padding: '0.55rem 0.75rem',
+              border: '1px solid #E2E8F0', background: 'white',
+              borderRadius: 'var(--radius-md)',
+              color: '#334155', fontSize: '0.78rem', fontWeight: 700,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '0.4rem',
+              cursor: btn.disabled ? 'not-allowed' : 'pointer',
+              opacity: btn.disabled ? 0.55 : 1,
+            }}
+          >
+            {btn.icon} {btn.label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Recent activity                                                            */
+/* -------------------------------------------------------------------------- */
+
+interface RecentActivityProps {
+  divisionLabel: string | null;
+  subjectLabel: string | null;
+  items: Resource[];
+}
+
+const activityIcon = (item: Resource): { bg: string; color: string; node: React.ReactNode } => {
+  if (item.status === 'published') {
+    return { bg: '#DCFCE7', color: '#16A34A', node: <CheckCircle2 size={16} /> };
+  }
+  return { bg: '#FEF3C7', color: '#B45309', node: <PencilLine size={16} /> };
+};
+
+const statusPill = (status: Resource['status']) => {
+  if (status === 'published') return { label: 'PUBLISHED', cls: 'success' as const };
+  return { label: 'DRAFT', cls: 'warning' as const };
+};
+
+const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items }) => (
+  <div>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
+      <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+        Recent Activity{divisionLabel ? ` in ${divisionLabel}` : ''}
+      </h3>
+      <button className="alert-row-cta" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+        View Full History <ArrowRight size={12} />
+      </button>
+    </div>
+
+    {items.length === 0 ? (
+      <div
+        className="card"
+        style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}
+      >
+        {divisionLabel
+          ? 'Nothing here yet — upload an assignment or notes above to get started.'
+          : 'Pick a division and subject to see its activity.'}
+      </div>
+    ) : (
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+        {items.slice(0, 5).map(item => {
+          const ico = activityIcon(item);
+          const pill = statusPill(item.status);
+          return (
+            <div
+              key={item._id}
+              className="card"
+              style={{ display: 'flex', alignItems: 'center', gap: '0.85rem', padding: '0.85rem 1rem' }}
+            >
+              <div
+                style={{
+                  width: 32, height: 32, borderRadius: '50%',
+                  background: ico.bg, color: ico.color,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
+                }}
+              >
+                {ico.node}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0F172A' }}>
+                  {item.status === 'published'
+                    ? `Published: ${item.title}`
+                    : `Draft: ${item.title}`}
+                </div>
+                <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.15rem' }}>
+                  {item.kind === 'assignment' ? 'Assignment' : 'Notes'}
+                  {' · '}
+                  Updated {relTime(item.updatedAt)}
+                </div>
+              </div>
+              <span
+                className={`status-pill ${pill.cls}`}
+                style={{ fontSize: '0.62rem', letterSpacing: '0.6px' }}
+              >
+                {pill.label}
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    )}
+  </div>
+);
+

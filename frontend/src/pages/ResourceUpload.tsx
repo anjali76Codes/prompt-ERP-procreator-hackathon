@@ -2,16 +2,19 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   Upload, FileText, ChevronRight, ChevronLeft, Pencil, Send, Save,
-  Paperclip, X, FileImage, FileType2, File as FileIcon, Eye, Loader2,
+  Paperclip, X, FileImage, FileType2, File as FileIcon, Loader2,
+  ArrowRight, ChevronDown, Check,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useResources } from '../lib/resources/ResourcesContext';
+import { useAuth } from '../lib/auth/AuthContext';
 import type {
   Resource, ResourceAttachment, ResourceKind,
 } from '../lib/resources/types';
 import { ApiError } from '../lib/api';
 
 type Stage = 'form' | 'preview';
+type Step = 1 | 2 | 3;
 
 const ACCEPT = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.ppt,.pptx,.zip';
 const MAX_TOTAL_MB = 25;
@@ -28,17 +31,42 @@ const mimeIcon = (type: string): React.ReactNode => {
   return <FileIcon size={16} />;
 };
 
+/* -------------------------------------------------------------------------- */
+/*  Shared styles — softer look to match the wizard mockup                    */
+/* -------------------------------------------------------------------------- */
+
 const inputStyle: React.CSSProperties = {
-  border: '1px solid #E2E8F0', borderRadius: '0.5rem',
-  padding: '0.55rem 0.85rem', fontSize: '0.9rem', outline: 'none',
-  background: 'white', fontFamily: 'inherit', width: '100%',
+  width: '100%',
+  border: '1px solid #E2E8F0',
+  borderRadius: '0.6rem',
+  padding: '0.7rem 0.9rem',
+  fontSize: '0.92rem',
+  outline: 'none',
+  background: 'white',
+  fontFamily: 'inherit',
+  color: '#0F172A',
+  transition: 'border-color 0.15s, box-shadow 0.15s',
 };
 
-const labelStyle: React.CSSProperties = {
-  display: 'flex', flexDirection: 'column', gap: '0.35rem',
-  fontSize: '0.72rem', fontWeight: 700, color: '#475569',
-  textTransform: 'uppercase', letterSpacing: '0.4px',
+const labelText: React.CSSProperties = {
+  display: 'block',
+  fontSize: '0.88rem',
+  fontWeight: 500,
+  color: '#334155',
+  marginBottom: '0.45rem',
 };
+
+const errorText: React.CSSProperties = {
+  display: 'block',
+  marginTop: '0.4rem',
+  fontSize: '0.78rem',
+  color: '#EF4444',
+  fontWeight: 500,
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Form state                                                                */
+/* -------------------------------------------------------------------------- */
 
 interface FormState {
   title: string;
@@ -46,7 +74,7 @@ interface FormState {
   dueDate: string;
   maxMarks: string;
   unit: string;
-  /** New files queued for upload (only in create mode + as additions in edit mode). */
+  /** New files queued for upload. */
   pendingFiles: File[];
 }
 
@@ -54,10 +82,17 @@ const emptyForm = (): FormState => ({
   title: '', description: '', dueDate: '', maxMarks: '', unit: '', pendingFiles: [],
 });
 
+/* -------------------------------------------------------------------------- */
+/*  Page                                                                       */
+/* -------------------------------------------------------------------------- */
+
 export const ResourceUpload: React.FC = () => {
   const { type } = useParams<{ type: ResourceKind }>();
   const navigate = useNavigate();
-  const kind: ResourceKind = type === 'notes' ? 'notes' : 'assignment';
+  const initialKind: ResourceKind = type === 'notes' ? 'notes' : 'assignment';
+
+  const { user } = useAuth();
+  const teacherBranch = user && user.role === 'teacher' ? user.branch : 'Department';
 
   const {
     divisions, subjects, divisionId, subjectId,
@@ -66,16 +101,19 @@ export const ResourceUpload: React.FC = () => {
   } = useResources();
 
   const [stage, setStage] = useState<Stage>('form');
+  const [step, setStep] = useState<Step>(1);
+  const [kind, setKind] = useState<ResourceKind>(initialKind);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
 
-  // Resume the draft if one is in flight (Edit handoff from listing or preview).
+  // Resume an existing draft if one is in flight (Edit handoff).
   useEffect(() => {
     if (!draftId) return;
     const existing = getItem(draftId);
     if (!existing) return;
+    setKind(existing.kind);
     setForm({
       title: existing.title,
       description: existing.description,
@@ -95,16 +133,12 @@ export const ResourceUpload: React.FC = () => {
   const draft    = draftId ? getItem(draftId) : undefined;
   const editing  = !!draft;
 
-  const titleLabel = kind === 'assignment' ? 'Upload Assignment' : 'Upload Notes';
-  const iconNode   = kind === 'assignment' ? <Upload size={18} /> : <FileText size={18} />;
-
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(f => ({ ...f, [k]: v }));
 
   const onFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
     setForm(f => ({ ...f, pendingFiles: [...f.pendingFiles, ...Array.from(files)] }));
-    // As soon as the user adds a file, drop the "Attach at least one file" error.
     setErrors(prev => {
       if (!prev.attachments) return prev;
       const { attachments: _drop, ...rest } = prev;
@@ -129,40 +163,44 @@ export const ResourceUpload: React.FC = () => {
     }
   };
 
-  const pendingBytes = form.pendingFiles.reduce((a, f) => a + f.size, 0);
-  const uploadedBytes = draft?.attachments.reduce((a, x) => a + x.size, 0) ?? 0;
-  const totalBytes = pendingBytes + uploadedBytes;
+  const pendingBytes   = form.pendingFiles.reduce((a, f) => a + f.size, 0);
+  const uploadedBytes  = draft?.attachments.reduce((a, x) => a + x.size, 0) ?? 0;
+  const totalBytes     = pendingBytes + uploadedBytes;
   const totalAttachments = (draft?.attachments.length ?? 0) + form.pendingFiles.length;
 
-  const validate = (): boolean => {
+  const validateStep = (s: Step): boolean => {
     const e: Record<string, string> = {};
-    if (!form.title.trim()) e.title = 'Title is required';
-    if (form.title.trim().length > 200) e.title = 'Keep the title under 200 characters';
-    if (!form.description.trim()) e.description = 'Add a short description';
 
-    if (kind === 'assignment') {
-      if (!form.dueDate) e.dueDate = 'Due date is required';
-      if (form.maxMarks && Number.isNaN(Number(form.maxMarks))) e.maxMarks = 'Marks must be a number';
+    if (s === 1) {
+      if (!form.title.trim()) e.title = 'A title is required';
+      else if (form.title.trim().length > 200) e.title = 'Keep the title under 200 characters';
+      if (!form.description.trim()) e.description = 'Add a short description';
     }
 
-    if (totalAttachments === 0) e.attachments = 'Attach at least one file';
-    if (totalBytes > MAX_TOTAL_MB * 1024 * 1024) {
-      e.attachments = `Attachments exceed ${MAX_TOTAL_MB} MB total`;
+    if (s === 2) {
+      if (totalAttachments === 0) e.attachments = 'Attach at least one file';
+      if (totalBytes > MAX_TOTAL_MB * 1024 * 1024) {
+        e.attachments = `Attachments exceed ${MAX_TOTAL_MB} MB total`;
+      }
+    }
+
+    if (s === 3) {
+      if (kind === 'assignment') {
+        if (!form.dueDate) e.dueDate = 'Due date is required';
+        if (form.maxMarks && Number.isNaN(Number(form.maxMarks))) e.maxMarks = 'Marks must be a number';
+      }
     }
 
     setErrors(e);
     return Object.keys(e).length === 0;
   };
 
-  /** Persist the form to the backend; returns the saved Resource id. */
+  /** Persist all collected fields & files to the backend. Returns saved id. */
   const persist = async (): Promise<string | null> => {
     setServerError(null);
-    if (!validate()) return null;
-
     setBusy(true);
     try {
       if (editing && draft) {
-        // Update metadata.
         await updateItem(draft._id, {
           title: form.title.trim(),
           description: form.description.trim(),
@@ -177,7 +215,6 @@ export const ResourceUpload: React.FC = () => {
         return draft._id;
       }
 
-      // Create flow.
       const created = await createItem({
         kind,
         division: divisionId,
@@ -200,12 +237,28 @@ export const ResourceUpload: React.FC = () => {
     }
   };
 
-  const handlePreview = async () => {
+  const goNext = async () => {
+    if (!validateStep(step)) return;
+    if (step < 3) {
+      setStep((step + 1) as Step);
+      return;
+    }
+    // Step 3 → persist + jump to Preview.
     const id = await persist();
     if (id) setStage('preview');
   };
 
+  const goBack = () => {
+    if (step > 1) setStep((step - 1) as Step);
+  };
+
   const handleSaveDraft = async () => {
+    // Save draft requires at least the title.
+    if (!form.title.trim()) {
+      setStep(1);
+      setErrors({ title: 'A title is required even for drafts' });
+      return;
+    }
     const id = await persist();
     if (id) navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
   };
@@ -230,7 +283,8 @@ export const ResourceUpload: React.FC = () => {
     [draftId, getItem]
   );
 
-  /* --------------------------------- render -------------------------------- */
+  const titleLabel = kind === 'assignment' ? 'Upload Assignment' : 'Upload Notes';
+  const iconNode   = kind === 'assignment' ? <Upload size={18} /> : <FileText size={18} />;
 
   return (
     <AppLayout
@@ -245,57 +299,82 @@ export const ResourceUpload: React.FC = () => {
           <ChevronRight size={11} />
           <span>{subject?.code} · {subject?.name}</span>
           <ChevronRight size={11} />
-          <span className="current">{stage === 'form' ? 'Compose' : 'Preview'}</span>
+          <span className="current">{stage === 'form' ? `Step ${step}` : 'Preview'}</span>
         </>
       }
       pageActions={
-        <>
+        stage === 'preview' ? (
+          <>
+            <button className="btn btn-secondary btn-sm" onClick={() => setStage('form')} disabled={busy}>
+              <Pencil size={14} /> Edit
+            </button>
+            <button
+              className="btn btn-primary"
+              onClick={handlePublish}
+              disabled={busy || !previewItem || previewItem.status === 'published'}
+            >
+              {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+              {previewItem?.status === 'published' ? 'Published' : 'Publish'}
+            </button>
+          </>
+        ) : (
           <button className="btn btn-secondary btn-sm" onClick={() => navigate('/assignments')} disabled={busy}>
-            <ChevronLeft size={14} /> Back
+            <ChevronLeft size={14} /> Back to Hub
           </button>
-          {stage === 'form' ? (
-            <>
-              <button className="btn btn-secondary btn-sm" onClick={handleSaveDraft} disabled={busy}>
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save Draft
-              </button>
-              <button className="btn btn-primary" onClick={handlePreview} disabled={busy}>
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
-                {busy ? 'Uploading…' : 'Preview'}
-              </button>
-            </>
-          ) : (
-            <>
-              <button className="btn btn-secondary btn-sm" onClick={() => setStage('form')} disabled={busy}>
-                <Pencil size={14} /> Edit
-              </button>
-              <button className="btn btn-primary" onClick={handlePublish} disabled={busy || !previewItem || previewItem.status === 'published'}>
-                {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
-                {previewItem?.status === 'published' ? 'Published' : 'Publish'}
-              </button>
-            </>
-          )}
-        </>
+        )
       }
     >
       {serverError && (
-        <div className="status-pill danger" style={{ marginBottom: '1rem', textTransform: 'none' }}>
+        <div
+          className="status-pill danger"
+          style={{ marginBottom: '1rem', textTransform: 'none' }}
+        >
           {serverError}
         </div>
       )}
 
       {stage === 'form' ? (
-        <FormStage
-          kind={kind}
-          form={form}
-          errors={errors}
-          uploadedAttachments={draft?.attachments ?? []}
-          update={update}
-          onFiles={onFiles}
-          removePending={removePending}
-          removeUploaded={removeUploaded}
-          busy={busy}
-        />
+        <WizardLayout step={step}>
+          {step === 1 && (
+            <BasicInfoStep
+              kind={kind}
+              setKind={setKind}
+              teacherBranch={teacherBranch}
+              form={form}
+              errors={errors}
+              update={update}
+              onNext={goNext}
+              onSaveDraft={handleSaveDraft}
+              busy={busy}
+            />
+          )}
+          {step === 2 && (
+            <FileUploadStep
+              form={form}
+              errors={errors}
+              uploadedAttachments={draft?.attachments ?? []}
+              onFiles={onFiles}
+              removePending={removePending}
+              removeUploaded={removeUploaded}
+              onNext={goNext}
+              onBack={goBack}
+              onSaveDraft={handleSaveDraft}
+              busy={busy}
+            />
+          )}
+          {step === 3 && (
+            <SettingsStep
+              kind={kind}
+              form={form}
+              errors={errors}
+              update={update}
+              onPreview={goNext}
+              onBack={goBack}
+              onSaveDraft={handleSaveDraft}
+              busy={busy}
+            />
+          )}
+        </WizardLayout>
       ) : previewItem ? (
         <PreviewStage
           item={previewItem}
@@ -307,223 +386,503 @@ export const ResourceUpload: React.FC = () => {
   );
 };
 
-/* -------------------------------- form stage ------------------------------ */
+/* -------------------------------------------------------------------------- */
+/*  Wizard frame (3-dot stepper + max-width centered content)                  */
+/* -------------------------------------------------------------------------- */
 
-interface FormStageProps {
+const STEPS: { idx: Step; label: string }[] = [
+  { idx: 1, label: 'Basic Info' },
+  { idx: 2, label: 'File Upload' },
+  { idx: 3, label: 'Settings' },
+];
+
+const WizardLayout: React.FC<{ step: Step; children: React.ReactNode }> = ({ step, children }) => (
+  <div style={{ maxWidth: 880, margin: '0 auto' }}>
+    {/* Stepper */}
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        gap: '0.85rem', margin: '0.25rem 0 2.25rem',
+      }}
+    >
+      {STEPS.map((s, i) => {
+        const done = step > s.idx;
+        const active = step === s.idx;
+        return (
+          <React.Fragment key={s.idx}>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}>
+              <div
+                style={{
+                  width: 44, height: 44, borderRadius: '0.65rem',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  background: active ? 'var(--primary)' : done ? '#DBEAFE' : '#F1F5F9',
+                  color: active ? 'white' : done ? 'var(--primary)' : '#94A3B8',
+                  fontWeight: 800, fontSize: '0.95rem',
+                  boxShadow: active ? '0 6px 14px rgba(13, 138, 188, 0.25)' : undefined,
+                  transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                }}
+              >
+                {done ? <Check size={18} /> : s.idx}
+              </div>
+              <span
+                style={{
+                  fontSize: '0.86rem',
+                  fontWeight: active ? 700 : 500,
+                  color: active ? '#0F172A' : '#475569',
+                }}
+              >
+                {s.label}
+              </span>
+            </div>
+            {i < STEPS.length - 1 && (
+              <div
+                style={{
+                  width: 80, height: 2,
+                  background: step > s.idx ? 'var(--primary)' : '#E2E8F0',
+                  borderRadius: 1, marginBottom: '1.6rem',
+                  transition: 'background 0.15s',
+                }}
+              />
+            )}
+          </React.Fragment>
+        );
+      })}
+    </div>
+
+    {children}
+  </div>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Step 1 — Basic Info                                                       */
+/* -------------------------------------------------------------------------- */
+
+interface BasicInfoStepProps {
   kind: ResourceKind;
+  setKind: (k: ResourceKind) => void;
+  teacherBranch: string;
   form: FormState;
   errors: Record<string, string>;
-  uploadedAttachments: ResourceAttachment[];
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
-  onFiles: (files: FileList | null) => void;
-  removePending: (idx: number) => void;
-  removeUploaded: (attId: string) => void;
+  onNext: () => void;
+  onSaveDraft: () => void;
   busy: boolean;
 }
 
-const FormStage: React.FC<FormStageProps> = ({
-  kind, form, errors, uploadedAttachments, update, onFiles, removePending, removeUploaded, busy,
+const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
+  kind, setKind, teacherBranch, form, errors, update, onNext, onSaveDraft, busy,
+}) => (
+  <Card>
+    <CardHeader
+      title="Content Details"
+      subtitle="Provide the foundational details for your resource."
+    />
+
+    <Field
+      label="Resource Title"
+      error={errors.title}
+    >
+      <input
+        type="text"
+        style={fieldStyle(!!errors.title)}
+        value={form.title}
+        onChange={e => update('title', e.target.value)}
+        placeholder="e.g. Introduction to Algorithms - Final Project"
+        maxLength={200}
+      />
+    </Field>
+
+    <Field
+      label="Description"
+      error={errors.description}
+    >
+      <textarea
+        style={{ ...fieldStyle(!!errors.description), minHeight: 140, resize: 'vertical', lineHeight: 1.55 }}
+        value={form.description}
+        onChange={e => update('description', e.target.value)}
+        placeholder="Briefly describe the contents of this upload..."
+      />
+    </Field>
+
+    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+      <Field label="Category">
+        <SelectBox
+          value={teacherBranch}
+          disabled
+          options={[{ value: teacherBranch, label: teacherBranch }]}
+          onChange={() => { /* locked to teacher branch */ }}
+        />
+      </Field>
+      <Field label="Resource Type">
+        <SelectBox
+          value={kind}
+          options={[
+            { value: 'assignment', label: 'Assignment' },
+            { value: 'notes', label: 'Notes' },
+          ]}
+          onChange={v => setKind(v as ResourceKind)}
+        />
+      </Field>
+    </div>
+
+    <FooterButtons>
+      <SecondaryButton onClick={onSaveDraft} disabled={busy}>
+        <Save size={14} /> Save as Draft
+      </SecondaryButton>
+      <PrimaryButton onClick={onNext} disabled={busy}>
+        Next to File Upload <ArrowRight size={14} />
+      </PrimaryButton>
+    </FooterButtons>
+  </Card>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Step 2 — File Upload                                                      */
+/* -------------------------------------------------------------------------- */
+
+interface FileUploadStepProps {
+  form: FormState;
+  errors: Record<string, string>;
+  uploadedAttachments: ResourceAttachment[];
+  onFiles: (files: FileList | null) => void;
+  removePending: (idx: number) => void;
+  removeUploaded: (attId: string) => void;
+  onNext: () => void;
+  onBack: () => void;
+  onSaveDraft: () => void;
+  busy: boolean;
+}
+
+const FileUploadStep: React.FC<FileUploadStepProps> = ({
+  form, errors, uploadedAttachments, onFiles, removePending, removeUploaded, onNext, onBack, onSaveDraft, busy,
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: '64% 33.5%', gap: '2.5%', alignItems: 'flex-start' }}>
-      {/* Left — fields */}
-      <div className="card" style={{ display: 'flex', flexDirection: 'column', gap: '1.1rem' }}>
-        <div className="card-header" style={{ marginBottom: 0 }}>
-          <h3 className="card-title-lg">{kind === 'assignment' ? 'Assignment details' : 'Notes details'}</h3>
-          <span className="status-pill muted">Required fields marked *</span>
+    <Card>
+      <CardHeader
+        title="Attachments"
+        subtitle="Drop in the files students need. They're uploaded to Cloudinary; URLs are kept in MongoDB."
+      />
+
+      {/* Hidden input — sibling of the dropzone so programmatic clicks don't bubble back. */}
+      <input
+        ref={inputRef}
+        type="file"
+        multiple
+        accept={ACCEPT}
+        onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
+        style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+        tabIndex={-1}
+        aria-hidden="true"
+      />
+
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={() => { if (!busy) inputRef.current?.click(); }}
+        onKeyDown={e => {
+          if (busy) return;
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+        onDragLeave={() => setDragOver(false)}
+        onDrop={e => {
+          e.preventDefault(); setDragOver(false);
+          if (!busy) onFiles(e.dataTransfer.files);
+        }}
+        style={{
+          cursor: busy ? 'wait' : 'pointer',
+          border: `1.5px dashed ${dragOver ? 'var(--primary)' : errors.attachments ? '#EF4444' : '#CBD5E1'}`,
+          borderRadius: '0.6rem',
+          padding: '2rem 1.5rem',
+          textAlign: 'center',
+          background: dragOver ? '#EFF6FF' : '#F8FAFC',
+          transition: 'background 0.15s, border-color 0.15s',
+          opacity: busy ? 0.6 : 1,
+        }}
+      >
+        <Paperclip size={24} color={dragOver ? 'var(--primary)' : '#64748B'} />
+        <div style={{ marginTop: '0.6rem', fontSize: '0.95rem', fontWeight: 600, color: '#0F172A' }}>
+          Click to choose files or drag &amp; drop
         </div>
+        <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#64748B' }}>
+          PDF, DOC, DOCX, PPT, PPTX, images, ZIP — up to {MAX_TOTAL_MB} MB total
+        </div>
+      </div>
+      {errors.attachments && <span style={errorText}>{errors.attachments}</span>}
 
-        <label style={labelStyle}>
-          Title *
-          <input
-            type="text"
-            style={{ ...inputStyle, borderColor: errors.title ? '#EF4444' : '#E2E8F0' }}
-            value={form.title}
-            onChange={e => update('title', e.target.value)}
-            placeholder={kind === 'assignment' ? 'e.g. Unit 3 — Recurrence Relations Problem Set' : 'e.g. Unit 3 — Lecture Notes'}
-            maxLength={200}
-          />
-          {errors.title && <span style={{ color: '#EF4444', textTransform: 'none', fontWeight: 600 }}>{errors.title}</span>}
-        </label>
-
-        <label style={labelStyle}>
-          {kind === 'assignment' ? 'Instructions / description *' : 'Description *'}
-          <textarea
-            style={{ ...inputStyle, minHeight: 130, resize: 'vertical', borderColor: errors.description ? '#EF4444' : '#E2E8F0' }}
-            value={form.description}
-            onChange={e => update('description', e.target.value)}
-            placeholder={kind === 'assignment'
-              ? 'Spell out what students must solve, submission format, citation policy, late-submission policy…'
-              : 'Briefly describe what these notes cover and how students should use them.'}
-          />
-          {errors.description && <span style={{ color: '#EF4444', textTransform: 'none', fontWeight: 600 }}>{errors.description}</span>}
-        </label>
-
-        {kind === 'assignment' ? (
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
-            <label style={labelStyle}>
-              Due date *
-              <input
-                type="date"
-                style={{ ...inputStyle, borderColor: errors.dueDate ? '#EF4444' : '#E2E8F0' }}
-                value={form.dueDate}
-                onChange={e => update('dueDate', e.target.value)}
-              />
-              {errors.dueDate && <span style={{ color: '#EF4444', textTransform: 'none', fontWeight: 600 }}>{errors.dueDate}</span>}
-            </label>
-            <label style={labelStyle}>
-              Maximum marks
-              <input
-                type="number"
-                min={0}
-                style={{ ...inputStyle, borderColor: errors.maxMarks ? '#EF4444' : '#E2E8F0' }}
-                value={form.maxMarks}
-                onChange={e => update('maxMarks', e.target.value)}
-                placeholder="e.g. 20"
-              />
-              {errors.maxMarks && <span style={{ color: '#EF4444', textTransform: 'none', fontWeight: 600 }}>{errors.maxMarks}</span>}
-            </label>
-          </div>
-        ) : (
-          <label style={labelStyle}>
-            Unit / Chapter tag
-            <input
-              type="text"
-              style={inputStyle}
-              value={form.unit}
-              onChange={e => update('unit', e.target.value)}
-              placeholder="e.g. Unit 4 · Greedy Algorithms"
+      {/* Already-uploaded attachments (edit mode) */}
+      {uploadedAttachments.length > 0 && (
+        <FileGroup label={`UPLOADED · ${uploadedAttachments.length}`} tone="green">
+          {uploadedAttachments.map(a => (
+            <AttachmentRow
+              key={a._id}
+              name={a.name}
+              size={a.size}
+              type={a.mimeType}
+              href={a.url}
+              onRemove={() => removeUploaded(a._id)}
+              cloud
             />
-          </label>
-        )}
+          ))}
+        </FileGroup>
+      )}
 
-        {/* Dropzone */}
-        <div>
-          <div style={{ ...labelStyle, marginBottom: '0.4rem' }}>
-            Attachments *
-          </div>
-          {/*
-           * Keep the file input as a sibling — not a child — of the clickable
-           * wrapper. If the input lives inside the wrapper, the synthesised
-           * click bubbles back up to the wrapper's onClick and re-triggers
-           * input.click(), which the browser blocks as a re-entrant file
-           * picker and quietly drops the user's selection.
-           */}
-          <input
-            ref={inputRef}
-            type="file"
-            multiple
-            accept={ACCEPT}
-            onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
-            style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
-            tabIndex={-1}
-            aria-hidden="true"
-          />
-          <div
-            role="button"
-            tabIndex={0}
-            onClick={() => { if (!busy) inputRef.current?.click(); }}
-            onKeyDown={e => {
-              if (busy) return;
-              if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                inputRef.current?.click();
-              }
-            }}
-            onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={e => {
-              e.preventDefault(); setDragOver(false);
-              if (!busy) onFiles(e.dataTransfer.files);
-            }}
-            style={{
-              cursor: busy ? 'wait' : 'pointer',
-              border: `1.5px dashed ${dragOver ? 'var(--primary)' : errors.attachments ? '#EF4444' : '#CBD5E1'}`,
-              borderRadius: 'var(--radius-md)',
-              padding: '1.5rem',
-              textAlign: 'center',
-              background: dragOver ? '#EFF6FF' : '#F8FAFC',
-              transition: 'background 0.15s, border-color 0.15s',
-              opacity: busy ? 0.6 : 1,
-            }}
-          >
-            <Paperclip size={22} color={dragOver ? 'var(--primary)' : '#64748B'} />
-            <div style={{ marginTop: '0.5rem', fontSize: '0.875rem', fontWeight: 700, color: '#0F172A' }}>
-              Click to choose files or drag & drop
-            </div>
-            <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: '#64748B' }}>
-              PDF, DOC, DOCX, PPT, PPTX, images, ZIP — up to {MAX_TOTAL_MB} MB total
-            </div>
-          </div>
-          {errors.attachments && (
-            <div style={{ color: '#EF4444', fontSize: '0.72rem', fontWeight: 700, marginTop: '0.4rem' }}>
-              {errors.attachments}
-            </div>
-          )}
+      {/* Pending (not-yet-uploaded) files */}
+      {form.pendingFiles.length > 0 && (
+        <FileGroup label={`PENDING UPLOAD · ${form.pendingFiles.length}`} tone="amber">
+          {form.pendingFiles.map((a, idx) => (
+            <AttachmentRow
+              key={`${a.name}-${idx}`}
+              name={a.name}
+              size={a.size}
+              type={a.type}
+              onRemove={() => removePending(idx)}
+            />
+          ))}
+        </FileGroup>
+      )}
 
-          {/* Already-uploaded attachments (edit mode) */}
-          {uploadedAttachments.length > 0 && (
-            <div style={{ marginTop: '0.85rem' }}>
-              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#16A34A', letterSpacing: '0.5px', marginBottom: '0.4rem' }}>
-                UPLOADED · {uploadedAttachments.length}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {uploadedAttachments.map(a => (
-                  <AttachmentRow
-                    key={a._id}
-                    name={a.name}
-                    size={a.size}
-                    type={a.mimeType}
-                    href={a.url}
-                    onRemove={() => removeUploaded(a._id)}
-                    cloud
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Pending (not-yet-uploaded) files */}
-          {form.pendingFiles.length > 0 && (
-            <div style={{ marginTop: '0.85rem' }}>
-              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#B45309', letterSpacing: '0.5px', marginBottom: '0.4rem' }}>
-                PENDING UPLOAD · {form.pendingFiles.length}
-              </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                {form.pendingFiles.map((a, idx) => (
-                  <AttachmentRow
-                    key={`${a.name}-${idx}`}
-                    name={a.name}
-                    size={a.size}
-                    type={a.type}
-                    onRemove={() => removePending(idx)}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
+      <FooterButtons>
+        <SecondaryButton onClick={onBack} disabled={busy}>
+          <ChevronLeft size={14} /> Back
+        </SecondaryButton>
+        <div style={{ display: 'flex', gap: '0.6rem' }}>
+          <SecondaryButton onClick={onSaveDraft} disabled={busy}>
+            <Save size={14} /> Save as Draft
+          </SecondaryButton>
+          <PrimaryButton onClick={onNext} disabled={busy}>
+            Next to Settings <ArrowRight size={14} />
+          </PrimaryButton>
         </div>
-      </div>
-
-      {/* Right — guidance card */}
-      <div className="stack-lg">
-        <div className="card">
-          <span className="section-eyebrow">Before you publish</span>
-          <ul style={{ margin: '0.5rem 0 0', paddingLeft: '1.1rem', color: '#475569', fontSize: '0.82rem', lineHeight: 1.7 }}>
-            <li>Use a clear title — students see it in their feed.</li>
-            <li>Spell out submission expectations in the description.</li>
-            {kind === 'assignment' && <li>Pick a due date students will see in their planner.</li>}
-            <li>Files are stored on Cloudinary; URLs are saved in MongoDB.</li>
-            <li>Drafts are private until you press <strong>Publish</strong>.</li>
-          </ul>
-        </div>
-      </div>
-    </div>
+      </FooterButtons>
+    </Card>
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Step 3 — Settings                                                         */
+/* -------------------------------------------------------------------------- */
+
+interface SettingsStepProps {
+  kind: ResourceKind;
+  form: FormState;
+  errors: Record<string, string>;
+  update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
+  onPreview: () => void;
+  onBack: () => void;
+  onSaveDraft: () => void;
+  busy: boolean;
+}
+
+const SettingsStep: React.FC<SettingsStepProps> = ({
+  kind, form, errors, update, onPreview, onBack, onSaveDraft, busy,
+}) => (
+  <Card>
+    <CardHeader
+      title={kind === 'assignment' ? 'Assignment settings' : 'Notes settings'}
+      subtitle={kind === 'assignment'
+        ? 'Set when the assignment is due and how many marks it carries.'
+        : 'Tag the notes so students can find them inside the right unit.'}
+    />
+
+    {kind === 'assignment' ? (
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
+        <Field label="Due Date" error={errors.dueDate}>
+          <input
+            type="date"
+            style={fieldStyle(!!errors.dueDate)}
+            value={form.dueDate}
+            onChange={e => update('dueDate', e.target.value)}
+          />
+        </Field>
+        <Field label="Maximum Marks" error={errors.maxMarks}>
+          <input
+            type="number"
+            min={0}
+            style={fieldStyle(!!errors.maxMarks)}
+            value={form.maxMarks}
+            onChange={e => update('maxMarks', e.target.value)}
+            placeholder="e.g. 20"
+          />
+        </Field>
+      </div>
+    ) : (
+      <Field label="Unit / Chapter tag">
+        <input
+          type="text"
+          style={fieldStyle(false)}
+          value={form.unit}
+          onChange={e => update('unit', e.target.value)}
+          placeholder="e.g. Unit 4 · Greedy Algorithms"
+        />
+      </Field>
+    )}
+
+    <FooterButtons>
+      <SecondaryButton onClick={onBack} disabled={busy}>
+        <ChevronLeft size={14} /> Back
+      </SecondaryButton>
+      <div style={{ display: 'flex', gap: '0.6rem' }}>
+        <SecondaryButton onClick={onSaveDraft} disabled={busy}>
+          <Save size={14} /> Save as Draft
+        </SecondaryButton>
+        <PrimaryButton onClick={onPreview} disabled={busy}>
+          {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+          {busy ? 'Uploading…' : 'Next to Preview'}
+          {!busy && <ArrowRight size={14} />}
+        </PrimaryButton>
+      </div>
+    </FooterButtons>
+  </Card>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Building blocks                                                            */
+/* -------------------------------------------------------------------------- */
+
+const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div
+    style={{
+      background: 'white',
+      border: '1px solid #E2E8F0',
+      borderRadius: '0.85rem',
+      padding: '1.75rem',
+      boxShadow: '0 1px 2px rgba(15, 23, 42, 0.04)',
+      display: 'flex', flexDirection: 'column', gap: '1.25rem',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const CardHeader: React.FC<{ title: string; subtitle: string }> = ({ title, subtitle }) => (
+  <div style={{ paddingBottom: '1rem', borderBottom: '1px solid #F1F5F9' }}>
+    <h2 style={{ margin: 0, fontSize: '1.2rem', fontWeight: 700, color: '#0F172A' }}>{title}</h2>
+    <p style={{ margin: '0.35rem 0 0', color: '#64748B', fontSize: '0.88rem' }}>{subtitle}</p>
+  </div>
+);
+
+const Field: React.FC<{ label: string; error?: string; children: React.ReactNode }> = ({
+  label, error, children,
+}) => (
+  <div>
+    <label style={labelText}>{label}</label>
+    {children}
+    {error && <span style={errorText}>{error}</span>}
+  </div>
+);
+
+const fieldStyle = (hasError: boolean): React.CSSProperties => ({
+  ...inputStyle,
+  borderColor: hasError ? '#EF4444' : '#E2E8F0',
+});
+
+interface SelectOption { value: string; label: string }
+
+const SelectBox: React.FC<{
+  value: string;
+  options: SelectOption[];
+  onChange: (v: string) => void;
+  disabled?: boolean;
+}> = ({ value, options, onChange, disabled }) => (
+  <div style={{ position: 'relative' }}>
+    <select
+      value={value}
+      onChange={e => onChange(e.target.value)}
+      disabled={disabled}
+      style={{
+        ...inputStyle,
+        appearance: 'none',
+        paddingRight: '2.4rem',
+        background: disabled ? '#F8FAFC' : 'white',
+        color: disabled ? '#475569' : '#0F172A',
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+    </select>
+    <ChevronDown
+      size={16}
+      color="#64748B"
+      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+    />
+  </div>
+);
+
+const FooterButtons: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div
+    style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+      gap: '0.6rem', paddingTop: '0.5rem',
+    }}
+  >
+    {children}
+  </div>
+);
+
+const PrimaryButton: React.FC<{
+  onClick: () => void; disabled?: boolean; children: React.ReactNode;
+}> = ({ onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+      padding: '0.65rem 1.15rem',
+      background: 'var(--primary)', color: 'white',
+      border: 'none', borderRadius: '0.6rem',
+      fontWeight: 600, fontSize: '0.88rem',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
+      transition: 'opacity 0.15s',
+    }}
+  >
+    {children}
+  </button>
+);
+
+const SecondaryButton: React.FC<{
+  onClick: () => void; disabled?: boolean; children: React.ReactNode;
+}> = ({ onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.5rem',
+      padding: '0.6rem 1rem',
+      background: 'white', color: '#334155',
+      border: '1px solid #E2E8F0', borderRadius: '0.6rem',
+      fontWeight: 600, fontSize: '0.86rem',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
+      transition: 'opacity 0.15s, background 0.15s',
+    }}
+  >
+    {children}
+  </button>
+);
+
+const FileGroup: React.FC<{ label: string; tone: 'green' | 'amber'; children: React.ReactNode }> = ({
+  label, tone, children,
+}) => (
+  <div>
+    <div
+      style={{
+        fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.5px',
+        color: tone === 'green' ? '#16A34A' : '#B45309', marginBottom: '0.45rem',
+      }}
+    >
+      {label}
+    </div>
+    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>{children}</div>
+  </div>
+);
 
 interface AttachmentRowProps {
   name: string;
@@ -537,8 +896,8 @@ interface AttachmentRowProps {
 const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, cloud, onRemove }) => (
   <div
     style={{
-      display: 'flex', alignItems: 'center', gap: '0.6rem',
-      padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-md)',
+      display: 'flex', alignItems: 'center', gap: '0.65rem',
+      padding: '0.6rem 0.85rem', borderRadius: '0.5rem',
       border: '1px solid #E2E8F0', background: 'white',
     }}
   >
@@ -550,7 +909,7 @@ const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, c
           target="_blank"
           rel="noopener noreferrer"
           style={{
-            fontSize: '0.82rem', fontWeight: 700, color: '#0F172A',
+            fontSize: '0.85rem', fontWeight: 600, color: '#0F172A',
             overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block',
             textDecoration: 'none',
           }}
@@ -558,24 +917,31 @@ const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, c
           {name}
         </a>
       ) : (
-        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <div style={{ fontSize: '0.85rem', fontWeight: 600, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {name}
         </div>
       )}
-      <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{fmtBytes(size)}{cloud && ' · Cloudinary'}</div>
+      <div style={{ fontSize: '0.74rem', color: '#64748B' }}>{fmtBytes(size)}{cloud && ' · Cloudinary'}</div>
     </div>
     <button
       type="button"
       onClick={onRemove}
-      className="btn btn-secondary btn-icon-only btn-sm"
+      style={{
+        background: 'transparent', border: '1px solid #E2E8F0',
+        borderRadius: '0.45rem', padding: '0.3rem',
+        cursor: 'pointer', color: '#64748B',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+      }}
       aria-label="Remove attachment"
     >
-      <X size={12} />
+      <X size={13} />
     </button>
   </div>
 );
 
-/* ------------------------------ preview stage ----------------------------- */
+/* -------------------------------------------------------------------------- */
+/*  Preview stage (unchanged behaviour)                                        */
+/* -------------------------------------------------------------------------- */
 
 const PreviewStage: React.FC<{
   item: Resource;
@@ -587,7 +953,6 @@ const PreviewStage: React.FC<{
 
   return (
     <div style={{ display: 'grid', gridTemplateColumns: '62% 35.5%', gap: '2.5%', alignItems: 'flex-start' }}>
-      {/* Left — file viewer */}
       <div className="card" style={{ padding: 0, overflow: 'hidden' }}>
         <div
           className="card-header"
@@ -663,7 +1028,6 @@ const PreviewStage: React.FC<{
         )}
       </div>
 
-      {/* Right — metadata */}
       <div className="stack-lg">
         <div className="card">
           <span className="section-eyebrow">{item.kind === 'assignment' ? 'Assignment summary' : 'Notes summary'}</span>
