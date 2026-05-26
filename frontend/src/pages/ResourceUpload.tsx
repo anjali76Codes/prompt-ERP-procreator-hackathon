@@ -3,11 +3,10 @@ import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   Upload, FileText, ChevronRight, ChevronLeft, Pencil, Send, Save,
   Paperclip, X, FileImage, FileType2, File as FileIcon, Loader2,
-  ArrowRight, ChevronDown, Check,
+  ArrowRight, Check,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useResources } from '../lib/resources/ResourcesContext';
-import { useAuth } from '../lib/auth/AuthContext';
 import type {
   Resource, ResourceAttachment, ResourceKind,
 } from '../lib/resources/types';
@@ -91,9 +90,6 @@ export const ResourceUpload: React.FC = () => {
   const navigate = useNavigate();
   const initialKind: ResourceKind = type === 'notes' ? 'notes' : 'assignment';
 
-  const { user } = useAuth();
-  const teacherBranch = user && user.role === 'teacher' ? user.branch : 'Department';
-
   const {
     divisions, subjects, divisionId, subjectId,
     getItem, createItem, updateItem, addFiles, removeFile, publish,
@@ -138,7 +134,11 @@ export const ResourceUpload: React.FC = () => {
 
   const onFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    setForm(f => ({ ...f, pendingFiles: [...f.pendingFiles, ...Array.from(files)] }));
+    // Snapshot the FileList synchronously — the input's `value` is reset
+    // right after this call, which empties the FileList before React runs
+    // the setForm updater.
+    const incoming = Array.from(files);
+    setForm(f => ({ ...f, pendingFiles: [...f.pendingFiles, ...incoming] }));
     setErrors(prev => {
       if (!prev.attachments) return prev;
       const { attachments: _drop, ...rest } = prev;
@@ -337,9 +337,6 @@ export const ResourceUpload: React.FC = () => {
         <WizardLayout step={step}>
           {step === 1 && (
             <BasicInfoStep
-              kind={kind}
-              setKind={setKind}
-              teacherBranch={teacherBranch}
               form={form}
               errors={errors}
               update={update}
@@ -458,9 +455,6 @@ const WizardLayout: React.FC<{ step: Step; children: React.ReactNode }> = ({ ste
 /* -------------------------------------------------------------------------- */
 
 interface BasicInfoStepProps {
-  kind: ResourceKind;
-  setKind: (k: ResourceKind) => void;
-  teacherBranch: string;
   form: FormState;
   errors: Record<string, string>;
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
@@ -470,7 +464,7 @@ interface BasicInfoStepProps {
 }
 
 const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
-  kind, setKind, teacherBranch, form, errors, update, onNext, onSaveDraft, busy,
+  form, errors, update, onNext, onSaveDraft, busy,
 }) => (
   <Card>
     <CardHeader
@@ -503,27 +497,6 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
         placeholder="Briefly describe the contents of this upload..."
       />
     </Field>
-
-    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem' }}>
-      <Field label="Category">
-        <SelectBox
-          value={teacherBranch}
-          disabled
-          options={[{ value: teacherBranch, label: teacherBranch }]}
-          onChange={() => { /* locked to teacher branch */ }}
-        />
-      </Field>
-      <Field label="Resource Type">
-        <SelectBox
-          value={kind}
-          options={[
-            { value: 'assignment', label: 'Assignment' },
-            { value: 'notes', label: 'Notes' },
-          ]}
-          onChange={v => setKind(v as ResourceKind)}
-        />
-      </Field>
-    </div>
 
     <FooterButtons>
       <SecondaryButton onClick={onSaveDraft} disabled={busy}>
@@ -782,38 +755,6 @@ const fieldStyle = (hasError: boolean): React.CSSProperties => ({
   ...inputStyle,
   borderColor: hasError ? '#EF4444' : '#E2E8F0',
 });
-
-interface SelectOption { value: string; label: string }
-
-const SelectBox: React.FC<{
-  value: string;
-  options: SelectOption[];
-  onChange: (v: string) => void;
-  disabled?: boolean;
-}> = ({ value, options, onChange, disabled }) => (
-  <div style={{ position: 'relative' }}>
-    <select
-      value={value}
-      onChange={e => onChange(e.target.value)}
-      disabled={disabled}
-      style={{
-        ...inputStyle,
-        appearance: 'none',
-        paddingRight: '2.4rem',
-        background: disabled ? '#F8FAFC' : 'white',
-        color: disabled ? '#475569' : '#0F172A',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-      }}
-    >
-      {options.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
-    <ChevronDown
-      size={16}
-      color="#64748B"
-      style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
-    />
-  </div>
-);
 
 const FooterButtons: React.FC<{ children: React.ReactNode }> = ({ children }) => (
   <div
