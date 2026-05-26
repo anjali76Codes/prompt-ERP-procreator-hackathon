@@ -16,6 +16,12 @@ import { Placeholder } from './pages/Placeholder';
 import { Profile } from './pages/Profile';
 import { PendingApproval } from './pages/PendingApproval';
 import { AttendanceProvider } from './lib/AttendanceContext';
+import { ResourcesProvider } from './lib/resources/ResourcesContext';
+import { Resources } from './pages/Resources';
+import { ResourceUpload } from './pages/ResourceUpload';
+import { ResourcesList } from './pages/ResourcesList';
+import { ReviewSubmissions } from './pages/ReviewSubmissions';
+import { StudentResources } from './pages/StudentResources';
 import { AuthProvider } from './lib/auth/AuthContext';
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
 import { RecorderProvider } from './lib/automation/recorder/RecorderContext';
@@ -31,6 +37,7 @@ const App = () => {
       <AuthProvider>
         <NotificationProvider>
         <AttendanceProvider>
+          <ResourcesProvider>
           <RecorderProvider>
             <RecorderOverlay />
             <ToastContainer
@@ -99,7 +106,7 @@ const App = () => {
             {/* Roadmap stubs */}
             <Route path="/grades"     element={<ProtectedRoute><Placeholder title="Grades" /></ProtectedRoute>} />
             <Route path="/schedule"   element={<ProtectedRoute><Placeholder title="Schedule" /></ProtectedRoute>} />
-            <Route path="/resources"  element={<ProtectedRoute><Placeholder title="Resources" /></ProtectedRoute>} />
+            <Route path="/resources"  element={<ProtectedRoute roles={['student']} requireActive><StudentResources /></ProtectedRoute>} />
             <Route path="/finance"    element={<ProtectedRoute><Placeholder title="Finance" /></ProtectedRoute>} />
             <Route path="/reports"    element={<ProtectedRoute><Placeholder title="Reports" /></ProtectedRoute>} />
             <Route path="/directory"  element={<ProtectedRoute><Placeholder title="Directory" /></ProtectedRoute>} />
@@ -108,9 +115,27 @@ const App = () => {
             <Route path="/homework"   element={<ProtectedRoute><Placeholder title="Homework" /></ProtectedRoute>} />
             <Route path="/support"    element={<ProtectedRoute><Placeholder title="Support" /></ProtectedRoute>} />
 
+            {/* Assignments & Notes — teachers only */}
+            <Route path="/assignments" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><Resources /></ProtectedRoute>
+            } />
+            <Route path="/assignments/upload/:type" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourceUpload /></ProtectedRoute>
+            } />
+            <Route path="/assignments/list" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="assignment" /></ProtectedRoute>
+            } />
+            <Route path="/assignments/list/:id/review" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ReviewSubmissions /></ProtectedRoute>
+            } />
+            <Route path="/assignments/notes" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="notes" /></ProtectedRoute>
+            } />
+
             <Route path="*" element={<Placeholder title="Page Not Found" description="The link you followed doesn't match any route in the ERP." />} />
           </Routes>
           </RecorderProvider>
+          </ResourcesProvider>
         </AttendanceProvider>
         </NotificationProvider>
       </AuthProvider>
