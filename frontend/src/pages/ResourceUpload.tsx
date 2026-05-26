@@ -2,13 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   Upload, FileText, ChevronRight, ChevronLeft, Pencil, Send, Save,
-  Paperclip, X, FileImage, FileType2, File as FileIcon, Eye,
+  Paperclip, X, FileImage, FileType2, File as FileIcon, Eye, Loader2,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
-import {
-  useResources, newResourceId,
-  type ResourceAttachment, type ResourceItem, type ResourceKind,
-} from '../lib/resources/ResourcesContext';
+import { useResources } from '../lib/resources/ResourcesContext';
+import type {
+  Resource, ResourceAttachment, ResourceKind,
+} from '../lib/resources/types';
+import { ApiError } from '../lib/api';
 
 type Stage = 'form' | 'preview';
 
@@ -21,7 +22,7 @@ const fmtBytes = (n: number): string => {
   return `${(n / (1024 * 1024)).toFixed(2)} MB`;
 };
 
-const attachmentIcon = (type: string): React.ReactNode => {
+const mimeIcon = (type: string): React.ReactNode => {
   if (type.startsWith('image/')) return <FileImage size={16} />;
   if (type === 'application/pdf') return <FileType2 size={16} />;
   return <FileIcon size={16} />;
@@ -45,16 +46,12 @@ interface FormState {
   dueDate: string;
   maxMarks: string;
   unit: string;
-  attachments: ResourceAttachment[];
+  /** New files queued for upload (only in create mode + as additions in edit mode). */
+  pendingFiles: File[];
 }
 
 const emptyForm = (): FormState => ({
-  title: '',
-  description: '',
-  dueDate: '',
-  maxMarks: '',
-  unit: '',
-  attachments: [],
+  title: '', description: '', dueDate: '', maxMarks: '', unit: '', pendingFiles: [],
 });
 
 export const ResourceUpload: React.FC = () => {
@@ -64,15 +61,17 @@ export const ResourceUpload: React.FC = () => {
 
   const {
     divisions, subjects, divisionId, subjectId,
-    upsertItem, publishItem, getItem,
+    getItem, createItem, updateItem, addFiles, removeFile, publish,
     draftId, setDraftId,
   } = useResources();
 
   const [stage, setStage] = useState<Stage>('form');
   const [form, setForm] = useState<FormState>(emptyForm);
   const [errors, setErrors] = useState<Record<string, string>>({});
+  const [busy, setBusy] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
 
-  // Resume an existing draft if one is in flight (from previous "Edit").
+  // Resume the draft if one is in flight (Edit handoff from listing or preview).
   useEffect(() => {
     if (!draftId) return;
     const existing = getItem(draftId);
@@ -80,53 +79,65 @@ export const ResourceUpload: React.FC = () => {
     setForm({
       title: existing.title,
       description: existing.description,
-      dueDate: existing.dueDate ?? '',
+      dueDate: existing.dueDate ? existing.dueDate.slice(0, 10) : '',
       maxMarks: existing.maxMarks !== undefined ? String(existing.maxMarks) : '',
       unit: existing.unit ?? '',
-      attachments: existing.attachments,
+      pendingFiles: [],
     });
   }, [draftId, getItem]);
 
-  // If user navigated here without picking division+subject, bounce back to hub.
   if (!divisionId || !subjectId) {
     return <Navigate to="/assignments" replace />;
   }
 
   const division = divisions.find(d => d._id === divisionId);
-  const subject = subjects.find(s => s._id === subjectId);
+  const subject  = subjects.find(s => s._id === subjectId);
+  const draft    = draftId ? getItem(draftId) : undefined;
+  const editing  = !!draft;
 
-  const title = kind === 'assignment' ? 'Upload Assignment' : 'Upload Notes';
-  const icon  = kind === 'assignment' ? <Upload size={18} /> : <FileText size={18} />;
+  const titleLabel = kind === 'assignment' ? 'Upload Assignment' : 'Upload Notes';
+  const iconNode   = kind === 'assignment' ? <Upload size={18} /> : <FileText size={18} />;
 
   const update = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm(f => ({ ...f, [k]: v }));
 
   const onFiles = (files: FileList | null) => {
     if (!files || files.length === 0) return;
-    const added: ResourceAttachment[] = Array.from(files).map(f => ({
-      name: f.name,
-      size: f.size,
-      type: f.type || 'application/octet-stream',
-      url: URL.createObjectURL(f),
-    }));
-    setForm(f => ({ ...f, attachments: [...f.attachments, ...added] }));
-  };
-
-  const removeAttachment = (idx: number) => {
-    setForm(f => {
-      const next = f.attachments.slice();
-      const [removed] = next.splice(idx, 1);
-      if (removed) URL.revokeObjectURL(removed.url);
-      return { ...f, attachments: next };
+    setForm(f => ({ ...f, pendingFiles: [...f.pendingFiles, ...Array.from(files)] }));
+    // As soon as the user adds a file, drop the "Attach at least one file" error.
+    setErrors(prev => {
+      if (!prev.attachments) return prev;
+      const { attachments: _drop, ...rest } = prev;
+      return rest;
     });
   };
 
-  const totalBytes = form.attachments.reduce((a, x) => a + x.size, 0);
+  const removePending = (idx: number) =>
+    setForm(f => {
+      const next = f.pendingFiles.slice();
+      next.splice(idx, 1);
+      return { ...f, pendingFiles: next };
+    });
+
+  const removeUploaded = async (attId: string) => {
+    if (!draft) return;
+    if (!confirm('Delete this attachment from Cloudinary? This cannot be undone.')) return;
+    try {
+      await removeFile(draft._id, attId);
+    } catch (e) {
+      setServerError(e instanceof ApiError ? e.message : 'Failed to delete attachment');
+    }
+  };
+
+  const pendingBytes = form.pendingFiles.reduce((a, f) => a + f.size, 0);
+  const uploadedBytes = draft?.attachments.reduce((a, x) => a + x.size, 0) ?? 0;
+  const totalBytes = pendingBytes + uploadedBytes;
+  const totalAttachments = (draft?.attachments.length ?? 0) + form.pendingFiles.length;
 
   const validate = (): boolean => {
     const e: Record<string, string> = {};
     if (!form.title.trim()) e.title = 'Title is required';
-    if (form.title.trim().length > 120) e.title = 'Keep the title under 120 characters';
+    if (form.title.trim().length > 200) e.title = 'Keep the title under 200 characters';
     if (!form.description.trim()) e.description = 'Add a short description';
 
     if (kind === 'assignment') {
@@ -134,7 +145,7 @@ export const ResourceUpload: React.FC = () => {
       if (form.maxMarks && Number.isNaN(Number(form.maxMarks))) e.maxMarks = 'Marks must be a number';
     }
 
-    if (form.attachments.length === 0) e.attachments = 'Attach at least one file';
+    if (totalAttachments === 0) e.attachments = 'Attach at least one file';
     if (totalBytes > MAX_TOTAL_MB * 1024 * 1024) {
       e.attachments = `Attachments exceed ${MAX_TOTAL_MB} MB total`;
     }
@@ -143,54 +154,78 @@ export const ResourceUpload: React.FC = () => {
     return Object.keys(e).length === 0;
   };
 
-  const buildItem = (statusOverride?: 'draft' | 'published'): ResourceItem => {
-    const id = draftId ?? newResourceId();
-    const existing = draftId ? getItem(draftId) : undefined;
-    const now = new Date().toISOString();
-    return {
-      id,
-      kind,
-      status: statusOverride ?? existing?.status ?? 'draft',
-      divisionId: divisionId!,
-      subjectId: subjectId!,
-      title: form.title.trim(),
-      description: form.description.trim(),
-      dueDate: kind === 'assignment' ? form.dueDate : undefined,
-      maxMarks: kind === 'assignment' && form.maxMarks ? Number(form.maxMarks) : undefined,
-      unit: kind === 'notes' ? form.unit.trim() || undefined : undefined,
-      attachments: form.attachments,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
-    };
-  };
+  /** Persist the form to the backend; returns the saved Resource id. */
+  const persist = async (): Promise<string | null> => {
+    setServerError(null);
+    if (!validate()) return null;
 
-  const handlePreview = () => {
-    if (!validate()) return;
-    const item = buildItem();
-    upsertItem(item);
-    setDraftId(item.id);
-    setStage('preview');
-  };
+    setBusy(true);
+    try {
+      if (editing && draft) {
+        // Update metadata.
+        await updateItem(draft._id, {
+          title: form.title.trim(),
+          description: form.description.trim(),
+          dueDate: kind === 'assignment' ? form.dueDate : undefined,
+          maxMarks: kind === 'assignment' && form.maxMarks ? Number(form.maxMarks) : undefined,
+          unit:    kind === 'notes' ? (form.unit.trim() || undefined) : undefined,
+        });
+        if (form.pendingFiles.length > 0) {
+          await addFiles(draft._id, form.pendingFiles);
+          setForm(f => ({ ...f, pendingFiles: [] }));
+        }
+        return draft._id;
+      }
 
-  const handleSaveDraft = () => {
-    if (!form.title.trim()) {
-      setErrors({ title: 'A title is required even for drafts' });
-      return;
+      // Create flow.
+      const created = await createItem({
+        kind,
+        division: divisionId,
+        subject:  subjectId,
+        title: form.title.trim(),
+        description: form.description.trim(),
+        dueDate:  kind === 'assignment' ? form.dueDate : undefined,
+        maxMarks: kind === 'assignment' && form.maxMarks ? Number(form.maxMarks) : undefined,
+        unit:     kind === 'notes' ? (form.unit.trim() || undefined) : undefined,
+        files: form.pendingFiles,
+      });
+      setDraftId(created._id);
+      setForm(f => ({ ...f, pendingFiles: [] }));
+      return created._id;
+    } catch (e) {
+      setServerError(e instanceof ApiError ? e.message : 'Failed to save resource');
+      return null;
+    } finally {
+      setBusy(false);
     }
-    const item = buildItem('draft');
-    upsertItem(item);
-    setDraftId(item.id);
-    navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
   };
 
-  const handlePublish = () => {
+  const handlePreview = async () => {
+    const id = await persist();
+    if (id) setStage('preview');
+  };
+
+  const handleSaveDraft = async () => {
+    const id = await persist();
+    if (id) navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
+  };
+
+  const handlePublish = async () => {
     if (!draftId) return;
-    publishItem(draftId);
-    setDraftId(null);
-    navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
+    setBusy(true);
+    setServerError(null);
+    try {
+      await publish(draftId);
+      setDraftId(null);
+      navigate(kind === 'assignment' ? '/assignments/list' : '/assignments/notes');
+    } catch (e) {
+      setServerError(e instanceof ApiError ? e.message : 'Publish failed');
+    } finally {
+      setBusy(false);
+    }
   };
 
-  const previewItem = useMemo<ResourceItem | undefined>(
+  const previewItem = useMemo<Resource | undefined>(
     () => (draftId ? getItem(draftId) : undefined),
     [draftId, getItem]
   );
@@ -200,8 +235,8 @@ export const ResourceUpload: React.FC = () => {
   return (
     <AppLayout
       background="#F8FAFC"
-      pageIcon={icon}
-      pageTitle={title}
+      pageIcon={iconNode}
+      pageTitle={titleLabel}
       pageBreadcrumb={
         <>
           <button onClick={() => navigate('/assignments')}>Assignments & Notes</button>
@@ -215,39 +250,51 @@ export const ResourceUpload: React.FC = () => {
       }
       pageActions={
         <>
-          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/assignments')}>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/assignments')} disabled={busy}>
             <ChevronLeft size={14} /> Back
           </button>
           {stage === 'form' ? (
             <>
-              <button className="btn btn-secondary btn-sm" onClick={handleSaveDraft}>
-                <Save size={14} /> Save Draft
+              <button className="btn btn-secondary btn-sm" onClick={handleSaveDraft} disabled={busy}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                Save Draft
               </button>
-              <button className="btn btn-primary" onClick={handlePreview}>
-                <Eye size={14} /> Preview
+              <button className="btn btn-primary" onClick={handlePreview} disabled={busy}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Eye size={14} />}
+                {busy ? 'Uploading…' : 'Preview'}
               </button>
             </>
           ) : (
             <>
-              <button className="btn btn-secondary btn-sm" onClick={() => setStage('form')}>
+              <button className="btn btn-secondary btn-sm" onClick={() => setStage('form')} disabled={busy}>
                 <Pencil size={14} /> Edit
               </button>
-              <button className="btn btn-primary" onClick={handlePublish}>
-                <Send size={14} /> Publish
+              <button className="btn btn-primary" onClick={handlePublish} disabled={busy || !previewItem || previewItem.status === 'published'}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                {previewItem?.status === 'published' ? 'Published' : 'Publish'}
               </button>
             </>
           )}
         </>
       }
     >
+      {serverError && (
+        <div className="status-pill danger" style={{ marginBottom: '1rem', textTransform: 'none' }}>
+          {serverError}
+        </div>
+      )}
+
       {stage === 'form' ? (
         <FormStage
           kind={kind}
           form={form}
           errors={errors}
+          uploadedAttachments={draft?.attachments ?? []}
           update={update}
           onFiles={onFiles}
-          removeAttachment={removeAttachment}
+          removePending={removePending}
+          removeUploaded={removeUploaded}
+          busy={busy}
         />
       ) : previewItem ? (
         <PreviewStage
@@ -266,13 +313,16 @@ interface FormStageProps {
   kind: ResourceKind;
   form: FormState;
   errors: Record<string, string>;
+  uploadedAttachments: ResourceAttachment[];
   update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   onFiles: (files: FileList | null) => void;
-  removeAttachment: (idx: number) => void;
+  removePending: (idx: number) => void;
+  removeUploaded: (attId: string) => void;
+  busy: boolean;
 }
 
 const FormStage: React.FC<FormStageProps> = ({
-  kind, form, errors, update, onFiles, removeAttachment,
+  kind, form, errors, uploadedAttachments, update, onFiles, removePending, removeUploaded, busy,
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -294,7 +344,7 @@ const FormStage: React.FC<FormStageProps> = ({
             value={form.title}
             onChange={e => update('title', e.target.value)}
             placeholder={kind === 'assignment' ? 'e.g. Unit 3 — Recurrence Relations Problem Set' : 'e.g. Unit 3 — Lecture Notes'}
-            maxLength={140}
+            maxLength={200}
           />
           {errors.title && <span style={{ color: '#EF4444', textTransform: 'none', fontWeight: 600 }}>{errors.title}</span>}
         </label>
@@ -355,22 +405,49 @@ const FormStage: React.FC<FormStageProps> = ({
           <div style={{ ...labelStyle, marginBottom: '0.4rem' }}>
             Attachments *
           </div>
+          {/*
+           * Keep the file input as a sibling — not a child — of the clickable
+           * wrapper. If the input lives inside the wrapper, the synthesised
+           * click bubbles back up to the wrapper's onClick and re-triggers
+           * input.click(), which the browser blocks as a re-entrant file
+           * picker and quietly drops the user's selection.
+           */}
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept={ACCEPT}
+            onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
+            style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+            tabIndex={-1}
+            aria-hidden="true"
+          />
           <div
-            onClick={() => inputRef.current?.click()}
+            role="button"
+            tabIndex={0}
+            onClick={() => { if (!busy) inputRef.current?.click(); }}
+            onKeyDown={e => {
+              if (busy) return;
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                inputRef.current?.click();
+              }
+            }}
             onDragOver={e => { e.preventDefault(); setDragOver(true); }}
             onDragLeave={() => setDragOver(false)}
             onDrop={e => {
               e.preventDefault(); setDragOver(false);
-              onFiles(e.dataTransfer.files);
+              if (!busy) onFiles(e.dataTransfer.files);
             }}
             style={{
-              cursor: 'pointer',
+              cursor: busy ? 'wait' : 'pointer',
               border: `1.5px dashed ${dragOver ? 'var(--primary)' : errors.attachments ? '#EF4444' : '#CBD5E1'}`,
               borderRadius: 'var(--radius-md)',
               padding: '1.5rem',
               textAlign: 'center',
               background: dragOver ? '#EFF6FF' : '#F8FAFC',
               transition: 'background 0.15s, border-color 0.15s',
+              opacity: busy ? 0.6 : 1,
             }}
           >
             <Paperclip size={22} color={dragOver ? 'var(--primary)' : '#64748B'} />
@@ -380,14 +457,6 @@ const FormStage: React.FC<FormStageProps> = ({
             <div style={{ marginTop: '0.2rem', fontSize: '0.72rem', color: '#64748B' }}>
               PDF, DOC, DOCX, PPT, PPTX, images, ZIP — up to {MAX_TOTAL_MB} MB total
             </div>
-            <input
-              ref={inputRef}
-              type="file"
-              multiple
-              accept={ACCEPT}
-              onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
-              style={{ display: 'none' }}
-            />
           </div>
           {errors.attachments && (
             <div style={{ color: '#EF4444', fontSize: '0.72rem', fontWeight: 700, marginTop: '0.4rem' }}>
@@ -395,34 +464,45 @@ const FormStage: React.FC<FormStageProps> = ({
             </div>
           )}
 
-          {form.attachments.length > 0 && (
-            <div style={{ marginTop: '0.85rem', display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              {form.attachments.map((a, idx) => (
-                <div
-                  key={`${a.name}-${idx}`}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: '0.6rem',
-                    padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-md)',
-                    border: '1px solid #E2E8F0', background: 'white',
-                  }}
-                >
-                  <span style={{ color: 'var(--primary)' }}>{attachmentIcon(a.type)}</span>
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {a.name}
-                    </div>
-                    <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{fmtBytes(a.size)}</div>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => removeAttachment(idx)}
-                    className="btn btn-secondary btn-icon-only btn-sm"
-                    aria-label="Remove attachment"
-                  >
-                    <X size={12} />
-                  </button>
-                </div>
-              ))}
+          {/* Already-uploaded attachments (edit mode) */}
+          {uploadedAttachments.length > 0 && (
+            <div style={{ marginTop: '0.85rem' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#16A34A', letterSpacing: '0.5px', marginBottom: '0.4rem' }}>
+                UPLOADED · {uploadedAttachments.length}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {uploadedAttachments.map(a => (
+                  <AttachmentRow
+                    key={a._id}
+                    name={a.name}
+                    size={a.size}
+                    type={a.mimeType}
+                    href={a.url}
+                    onRemove={() => removeUploaded(a._id)}
+                    cloud
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Pending (not-yet-uploaded) files */}
+          {form.pendingFiles.length > 0 && (
+            <div style={{ marginTop: '0.85rem' }}>
+              <div style={{ fontSize: '0.66rem', fontWeight: 800, color: '#B45309', letterSpacing: '0.5px', marginBottom: '0.4rem' }}>
+                PENDING UPLOAD · {form.pendingFiles.length}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                {form.pendingFiles.map((a, idx) => (
+                  <AttachmentRow
+                    key={`${a.name}-${idx}`}
+                    name={a.name}
+                    size={a.size}
+                    type={a.type}
+                    onRemove={() => removePending(idx)}
+                  />
+                ))}
+              </div>
             </div>
           )}
         </div>
@@ -436,8 +516,8 @@ const FormStage: React.FC<FormStageProps> = ({
             <li>Use a clear title — students see it in their feed.</li>
             <li>Spell out submission expectations in the description.</li>
             {kind === 'assignment' && <li>Pick a due date students will see in their planner.</li>}
+            <li>Files are stored on Cloudinary; URLs are saved in MongoDB.</li>
             <li>Drafts are private until you press <strong>Publish</strong>.</li>
-            <li>You can keep editing after publishing.</li>
           </ul>
         </div>
       </div>
@@ -445,10 +525,60 @@ const FormStage: React.FC<FormStageProps> = ({
   );
 };
 
+interface AttachmentRowProps {
+  name: string;
+  size: number;
+  type: string;
+  href?: string;
+  cloud?: boolean;
+  onRemove: () => void;
+}
+
+const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, cloud, onRemove }) => (
+  <div
+    style={{
+      display: 'flex', alignItems: 'center', gap: '0.6rem',
+      padding: '0.55rem 0.75rem', borderRadius: 'var(--radius-md)',
+      border: '1px solid #E2E8F0', background: 'white',
+    }}
+  >
+    <span style={{ color: cloud ? '#16A34A' : 'var(--primary)' }}>{mimeIcon(type)}</span>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      {href ? (
+        <a
+          href={href}
+          target="_blank"
+          rel="noopener noreferrer"
+          style={{
+            fontSize: '0.82rem', fontWeight: 700, color: '#0F172A',
+            overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', display: 'block',
+            textDecoration: 'none',
+          }}
+        >
+          {name}
+        </a>
+      ) : (
+        <div style={{ fontSize: '0.82rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {name}
+        </div>
+      )}
+      <div style={{ fontSize: '0.7rem', color: '#64748B' }}>{fmtBytes(size)}{cloud && ' · Cloudinary'}</div>
+    </div>
+    <button
+      type="button"
+      onClick={onRemove}
+      className="btn btn-secondary btn-icon-only btn-sm"
+      aria-label="Remove attachment"
+    >
+      <X size={12} />
+    </button>
+  </div>
+);
+
 /* ------------------------------ preview stage ----------------------------- */
 
 const PreviewStage: React.FC<{
-  item: ResourceItem;
+  item: Resource;
   divisionLabel: string;
   subjectLabel: string;
 }> = ({ item, divisionLabel, subjectLabel }) => {
@@ -464,7 +594,7 @@ const PreviewStage: React.FC<{
           style={{ marginBottom: 0, padding: '0.85rem 1rem', borderBottom: '1px solid #E2E8F0' }}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', minWidth: 0 }}>
-            <span style={{ color: 'var(--primary)' }}>{active ? attachmentIcon(active.type) : <FileIcon size={16} />}</span>
+            <span style={{ color: 'var(--primary)' }}>{active ? mimeIcon(active.mimeType) : <FileIcon size={16} />}</span>
             <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
               {active?.name ?? 'No file'}
             </span>
@@ -474,13 +604,13 @@ const PreviewStage: React.FC<{
 
         <div style={{ background: '#F1F5F9', height: 540, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {active ? (
-            active.type === 'application/pdf' ? (
+            active.mimeType === 'application/pdf' ? (
               <iframe
                 title={active.name}
                 src={active.url}
                 style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
               />
-            ) : active.type.startsWith('image/') ? (
+            ) : active.mimeType.startsWith('image/') ? (
               <img
                 src={active.url}
                 alt={active.name}
@@ -497,11 +627,12 @@ const PreviewStage: React.FC<{
                 </div>
                 <a
                   href={active.url}
-                  download={active.name}
+                  target="_blank"
+                  rel="noopener noreferrer"
                   className="btn btn-secondary btn-sm"
                   style={{ marginTop: '1rem', textDecoration: 'none' }}
                 >
-                  Download to verify
+                  Open in new tab
                 </a>
               </div>
             )
@@ -514,7 +645,7 @@ const PreviewStage: React.FC<{
           <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid #E2E8F0', overflowX: 'auto' }}>
             {item.attachments.map((a, idx) => (
               <button
-                key={`${a.name}-${idx}`}
+                key={a._id}
                 onClick={() => setActiveIdx(idx)}
                 style={{
                   border: '1px solid', borderColor: idx === activeIdx ? 'var(--primary)' : '#E2E8F0',
@@ -566,12 +697,21 @@ const PreviewStage: React.FC<{
           </div>
         </div>
 
-        <div className="card" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
-          <span className="section-eyebrow" style={{ color: '#B45309' }}>This is a draft</span>
-          <p style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#92400E', lineHeight: 1.55 }}>
-            Students will not see this until you press <strong>Publish</strong>. Use <strong>Edit</strong> if anything looks off.
-          </p>
-        </div>
+        {item.status === 'draft' ? (
+          <div className="card" style={{ background: '#FFFBEB', borderColor: '#FDE68A' }}>
+            <span className="section-eyebrow" style={{ color: '#B45309' }}>This is a draft</span>
+            <p style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#92400E', lineHeight: 1.55 }}>
+              Students will not see this until you press <strong>Publish</strong>. Use <strong>Edit</strong> if anything looks off.
+            </p>
+          </div>
+        ) : (
+          <div className="card" style={{ background: '#ECFDF5', borderColor: '#A7F3D0' }}>
+            <span className="section-eyebrow" style={{ color: '#15803D' }}>Published</span>
+            <p style={{ margin: '0.4rem 0 0', fontSize: '0.8rem', color: '#166534', lineHeight: 1.55 }}>
+              Visible to students of {divisionLabel}. Editing the title or description is still allowed.
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

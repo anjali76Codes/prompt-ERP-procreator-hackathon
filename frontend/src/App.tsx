@@ -18,6 +18,7 @@ import { ResourcesProvider } from './lib/resources/ResourcesContext';
 import { Resources } from './pages/Resources';
 import { ResourceUpload } from './pages/ResourceUpload';
 import { ResourcesList } from './pages/ResourcesList';
+import { StudentResources } from './pages/StudentResources';
 import { AuthProvider } from './lib/auth/AuthContext';
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
 import './dashboard.css';
@@ -73,7 +74,7 @@ const App = () => {
             {/* Roadmap stubs */}
             <Route path="/grades"     element={<ProtectedRoute><Placeholder title="Grades" /></ProtectedRoute>} />
             <Route path="/schedule"   element={<ProtectedRoute><Placeholder title="Schedule" /></ProtectedRoute>} />
-            <Route path="/resources"  element={<ProtectedRoute><Placeholder title="Resources" /></ProtectedRoute>} />
+            <Route path="/resources"  element={<ProtectedRoute roles={['student']} requireActive><StudentResources /></ProtectedRoute>} />
             <Route path="/finance"    element={<ProtectedRoute><Placeholder title="Finance" /></ProtectedRoute>} />
             <Route path="/reports"    element={<ProtectedRoute><Placeholder title="Reports" /></ProtectedRoute>} />
             <Route path="/directory"  element={<ProtectedRoute><Placeholder title="Directory" /></ProtectedRoute>} />

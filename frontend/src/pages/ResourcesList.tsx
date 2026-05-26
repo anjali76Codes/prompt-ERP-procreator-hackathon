@@ -5,9 +5,9 @@ import {
   Send, Trash2, Search, Paperclip,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
-import {
-  useResources, type ResourceItem, type ResourceKind,
-} from '../lib/resources/ResourcesContext';
+import { useResources } from '../lib/resources/ResourcesContext';
+import type { Resource, ResourceKind } from '../lib/resources/types';
+import { ApiError } from '../lib/api';
 
 type StatusFilter = 'all' | 'draft' | 'published';
 
@@ -22,12 +22,13 @@ interface Props { kind: ResourceKind }
 export const ResourcesList: React.FC<Props> = ({ kind }) => {
   const navigate = useNavigate();
   const {
-    divisions, subjects, divisionId, subjectId,
-    itemsForCurrent, publishItem, deleteItem, setDraftId,
+    divisions, subjects, divisionId, subjectId, loading,
+    itemsForCurrent, publish, deleteItem, setDraftId,
   } = useResources();
 
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
   const [query, setQuery] = useState('');
+  const [opError, setOpError] = useState<string | null>(null);
 
   const items = itemsForCurrent(kind);
 
@@ -50,19 +51,27 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
   const title = kind === 'assignment' ? 'Check Assignments' : 'Check Notes';
   const icon  = kind === 'assignment' ? <ClipboardList size={18} /> : <FileText size={18} />;
 
-  const onEdit = (item: ResourceItem) => {
-    setDraftId(item.id);
+  const onEdit = (item: Resource) => {
+    setDraftId(item._id);
     navigate(uploadPath);
   };
 
-  const onPublish = (item: ResourceItem) => {
+  const onPublish = async (item: Resource) => {
     if (!confirm(`Publish "${item.title}"? Students will be able to see it immediately.`)) return;
-    publishItem(item.id);
+    try {
+      await publish(item._id);
+    } catch (e) {
+      setOpError(e instanceof ApiError ? e.message : 'Publish failed');
+    }
   };
 
-  const onDelete = (item: ResourceItem) => {
-    if (!confirm(`Delete "${item.title}"? This cannot be undone.`)) return;
-    deleteItem(item.id);
+  const onDelete = async (item: Resource) => {
+    if (!confirm(`Delete "${item.title}"? This also removes all files from Cloudinary.`)) return;
+    try {
+      await deleteItem(item._id);
+    } catch (e) {
+      setOpError(e instanceof ApiError ? e.message : 'Delete failed');
+    }
   };
 
   const draftCount = items.filter(i => i.status === 'draft').length;
@@ -94,6 +103,14 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
       }
     >
       <div className="stack-lg">
+        {opError && (
+          <div className="status-pill danger" style={{ textTransform: 'none' }}>{opError}</div>
+        )}
+        {loading.items && items.length === 0 && (
+          <div className="card" style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
+            Loading…
+          </div>
+        )}
         {/* Metrics + filters */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr) auto', gap: '1rem', alignItems: 'stretch' }}>
           <Metric label="Total" value={String(items.length)} tone="muted" />
@@ -174,7 +191,7 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
           <div className="stack-md">
             {filtered.map(item => (
               <Row
-                key={item.id}
+                key={item._id}
                 item={item}
                 onEdit={() => onEdit(item)}
                 onPublish={() => onPublish(item)}
@@ -205,7 +222,7 @@ const Metric: React.FC<{ label: string; value: string; tone: 'muted' | 'success'
 };
 
 const Row: React.FC<{
-  item: ResourceItem;
+  item: Resource;
   onEdit: () => void;
   onPublish: () => void;
   onDelete: () => void;

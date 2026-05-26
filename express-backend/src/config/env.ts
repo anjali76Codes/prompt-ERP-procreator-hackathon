@@ -20,6 +20,13 @@ const schema = z.object({
   ADMIN_EMAIL: z.string().email().optional(),
   ADMIN_PASSWORD: z.string().min(8).optional(),
   ADMIN_NAME: z.string().optional(),
+
+  CLOUDINARY_CLOUD_NAME: z.string().min(1, 'CLOUDINARY_CLOUD_NAME is required'),
+  CLOUDINARY_API_KEY: z.string().min(1, 'CLOUDINARY_API_KEY is required'),
+  CLOUDINARY_API_SECRET: z.string().min(1, 'CLOUDINARY_API_SECRET is required'),
+  CLOUDINARY_FOLDER: z.string().default('erp/resources'),
+  RESOURCE_MAX_FILE_MB: z.coerce.number().int().positive().default(25),
+  RESOURCE_MAX_FILES: z.coerce.number().int().positive().default(10),
 });
 
 const parsed = schema.safeParse(process.env);

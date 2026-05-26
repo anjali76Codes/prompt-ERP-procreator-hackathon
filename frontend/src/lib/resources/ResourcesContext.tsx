@@ -4,90 +4,68 @@ import React, {
 import { fetchMyDivisions, fetchMySubjects } from '../erp/api';
 import type { Division, Subject } from '../erp/types';
 import { useAuth } from '../auth/AuthContext';
-
-export type ResourceKind = 'assignment' | 'notes';
-export type ResourceStatus = 'draft' | 'published';
-
-export interface ResourceAttachment {
-  name: string;
-  size: number;
-  type: string;
-  /** Object URL kept alive for the lifetime of this session. */
-  url: string;
-}
-
-export interface ResourceItem {
-  id: string;
-  kind: ResourceKind;
-  status: ResourceStatus;
-  divisionId: string;
-  subjectId: string;
-  title: string;
-  description: string;
-  /** Assignment-only: ISO date (yyyy-mm-dd) the student must submit by. */
-  dueDate?: string;
-  /** Assignment-only: maximum marks. */
-  maxMarks?: number;
-  /** Notes-only: free-form unit/chapter tag. */
-  unit?: string;
-  attachments: ResourceAttachment[];
-  createdAt: string;
-  updatedAt: string;
-}
+import {
+  listResources, createResource, updateResource as apiUpdateResource,
+  publishResource as apiPublishResource, unpublishResource as apiUnpublishResource,
+  deleteResource as apiDeleteResource, addAttachments, removeAttachment,
+  type CreateResourceBody, type UpdateResourceBody,
+} from './api';
+import type { Resource, ResourceKind } from './types';
 
 interface ResourcesContextValue {
-  // Reference data (from backend).
+  // Reference data.
   divisions: Division[];
   subjects: Subject[];
-  loading: { divisions: boolean; subjects: boolean };
+  loading: { divisions: boolean; subjects: boolean; items: boolean };
   error: string | null;
 
-  // Selection (persists across pages of the flow).
+  // Selection (in-memory only — drives which subject/division the teacher is working on).
   divisionId: string | null;
   subjectId: string | null;
   selectDivision: (id: string | null) => void;
   selectSubject: (id: string | null) => void;
   resetSelection: () => void;
 
-  // In-memory store of created items.
-  items: ResourceItem[];
-  upsertItem: (item: ResourceItem) => void;
-  publishItem: (id: string) => void;
-  deleteItem: (id: string) => void;
-  getItem: (id: string) => ResourceItem | undefined;
+  // Backend-backed item store.
+  items: Resource[];
+  refresh: () => Promise<void>;
+  createItem: (body: CreateResourceBody) => Promise<Resource>;
+  updateItem: (id: string, body: UpdateResourceBody) => Promise<Resource>;
+  addFiles:   (id: string, files: File[]) => Promise<Resource>;
+  removeFile: (id: string, attId: string) => Promise<Resource>;
+  publish:    (id: string) => Promise<Resource>;
+  unpublish:  (id: string) => Promise<Resource>;
+  deleteItem: (id: string) => Promise<void>;
+  getItem:    (id: string) => Resource | undefined;
+  itemsForCurrent: (kind: ResourceKind) => Resource[];
 
-  // Editing handoff between Upload form and Preview view.
+  // Draft handoff between Upload form and Preview view.
   draftId: string | null;
   setDraftId: (id: string | null) => void;
-
-  // Helpers
-  itemsForCurrent: (kind: ResourceKind) => ResourceItem[];
 }
 
 const Ctx = createContext<ResourcesContextValue | null>(null);
 
-const newId = (): string =>
-  `res_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-
 export const ResourcesProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { user } = useAuth();
+  const isTeacher = user?.role === 'teacher';
 
   const [divisions, setDivisions] = useState<Division[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
-  const [loading, setLoading] = useState({ divisions: false, subjects: false });
+  const [loading, setLoading] = useState({ divisions: false, subjects: false, items: false });
   const [error, setError] = useState<string | null>(null);
 
   const [divisionId, setDivisionId] = useState<string | null>(null);
   const [subjectId, setSubjectId] = useState<string | null>(null);
 
-  const [items, setItems] = useState<ResourceItem[]>([]);
+  const [items, setItems] = useState<Resource[]>([]);
   const [draftId, setDraftId] = useState<string | null>(null);
 
-  // Load teacher's divisions + subjects on login.
+  /* ---- Load divisions + subjects (teacher only) -------------------- */
   useEffect(() => {
-    if (!user || user.role !== 'teacher') return;
+    if (!isTeacher) return;
     let cancelled = false;
-    setLoading({ divisions: true, subjects: true });
+    setLoading(l => ({ ...l, divisions: true, subjects: true }));
     Promise.all([fetchMyDivisions(), fetchMySubjects()])
       .then(([d, s]) => {
         if (cancelled) return;
@@ -98,14 +76,36 @@ export const ResourcesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         if (!cancelled) setError(e instanceof Error ? e.message : 'Failed to load divisions/subjects');
       })
       .finally(() => {
-        if (!cancelled) setLoading({ divisions: false, subjects: false });
+        if (!cancelled) setLoading(l => ({ ...l, divisions: false, subjects: false }));
       });
     return () => { cancelled = true; };
-  }, [user]);
+  }, [isTeacher]);
 
+  /* ---- Load resources for the active division+subject -------------- */
+  const refresh = useCallback(async () => {
+    if (!isTeacher) return;
+    if (!divisionId || !subjectId) { setItems([]); return; }
+    setLoading(l => ({ ...l, items: true }));
+    try {
+      const list = await listResources({
+        divisionId,
+        subjectId,
+        mine: true,
+      });
+      setItems(list);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Failed to load resources');
+    } finally {
+      setLoading(l => ({ ...l, items: false }));
+    }
+  }, [isTeacher, divisionId, subjectId]);
+
+  useEffect(() => { void refresh(); }, [refresh]);
+
+  /* ---- Selection helpers ------------------------------------------- */
   const selectDivision = useCallback((id: string | null) => {
     setDivisionId(id);
-    setSubjectId(null); // changing division invalidates subject choice
+    setSubjectId(null);
   }, []);
   const selectSubject = useCallback((id: string | null) => setSubjectId(id), []);
   const resetSelection = useCallback(() => {
@@ -114,48 +114,85 @@ export const ResourcesProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setDraftId(null);
   }, []);
 
-  const upsertItem = useCallback((item: ResourceItem) => {
+  /* ---- Mutations --------------------------------------------------- */
+  const replaceItem = (next: Resource) =>
     setItems(prev => {
-      const idx = prev.findIndex(i => i.id === item.id);
-      if (idx === -1) return [...prev, item];
-      const next = prev.slice();
-      next[idx] = item;
-      return next;
+      const idx = prev.findIndex(i => i._id === next._id);
+      if (idx === -1) return [next, ...prev];
+      const out = prev.slice();
+      out[idx] = next;
+      return out;
     });
+
+  const createItem = useCallback(async (body: CreateResourceBody) => {
+    const created = await createResource(body);
+    replaceItem(created);
+    return created;
   }, []);
 
-  const publishItem = useCallback((id: string) => {
-    setItems(prev => prev.map(i =>
-      i.id === id ? { ...i, status: 'published', updatedAt: new Date().toISOString() } : i
-    ));
+  const updateItem = useCallback(async (id: string, body: UpdateResourceBody) => {
+    const updated = await apiUpdateResource(id, body);
+    replaceItem(updated);
+    return updated;
   }, []);
 
-  const deleteItem = useCallback((id: string) => {
-    setItems(prev => prev.filter(i => i.id !== id));
+  const addFiles = useCallback(async (id: string, files: File[]) => {
+    const updated = await addAttachments(id, files);
+    replaceItem(updated);
+    return updated;
   }, []);
+
+  const removeFile = useCallback(async (id: string, attId: string) => {
+    const updated = await removeAttachment(id, attId);
+    replaceItem(updated);
+    return updated;
+  }, []);
+
+  const publish = useCallback(async (id: string) => {
+    const updated = await apiPublishResource(id);
+    replaceItem(updated);
+    return updated;
+  }, []);
+
+  const unpublish = useCallback(async (id: string) => {
+    const updated = await apiUnpublishResource(id);
+    replaceItem(updated);
+    return updated;
+  }, []);
+
+  const deleteItem = useCallback(async (id: string) => {
+    await apiDeleteResource(id);
+    setItems(prev => prev.filter(i => i._id !== id));
+    if (draftId === id) setDraftId(null);
+  }, [draftId]);
 
   const getItem = useCallback(
-    (id: string) => items.find(i => i.id === id),
+    (id: string) => items.find(i => i._id === id),
     [items]
   );
 
   const itemsForCurrent = useCallback(
     (kind: ResourceKind) =>
-      items.filter(i => i.kind === kind && i.divisionId === divisionId && i.subjectId === subjectId),
+      items.filter(i => {
+        const divId = typeof i.division === 'string' ? i.division : i.division._id;
+        const subId = typeof i.subject === 'string'  ? i.subject  : i.subject._id;
+        return i.kind === kind && divId === divisionId && subId === subjectId;
+      }),
     [items, divisionId, subjectId]
   );
 
   const value = useMemo<ResourcesContextValue>(() => ({
     divisions, subjects, loading, error,
     divisionId, subjectId, selectDivision, selectSubject, resetSelection,
-    items, upsertItem, publishItem, deleteItem, getItem,
+    items, refresh, createItem, updateItem, addFiles, removeFile,
+    publish, unpublish, deleteItem, getItem, itemsForCurrent,
     draftId, setDraftId,
-    itemsForCurrent,
   }), [
     divisions, subjects, loading, error,
     divisionId, subjectId, selectDivision, selectSubject, resetSelection,
-    items, upsertItem, publishItem, deleteItem, getItem,
-    draftId, itemsForCurrent,
+    items, refresh, createItem, updateItem, addFiles, removeFile,
+    publish, unpublish, deleteItem, getItem, itemsForCurrent,
+    draftId,
   ]);
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
@@ -167,4 +204,4 @@ export const useResources = (): ResourcesContextValue => {
   return ctx;
 };
 
-export { newId as newResourceId };
+export type { Resource, ResourceKind } from './types';

@@ -5,6 +5,7 @@ import adminRoutes from './admin.routes';
 import academicRoutes from './academic.routes';
 import lectureRoutes from './lecture.routes';
 import attendanceRoutes from './attendance.routes';
+import resourceRoutes from './resource.routes';
 
 const router = Router();
 
@@ -21,5 +22,6 @@ router.use('/academic', academicRoutes);
 // Lecture + attendance share top-level paths so the URLs read naturally.
 router.use('/', lectureRoutes);
 router.use('/', attendanceRoutes);
+router.use('/', resourceRoutes);
 
 export default router;
