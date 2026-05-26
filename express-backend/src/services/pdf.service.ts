@@ -113,17 +113,52 @@ export const streamLectureRosterPdf = async (lectureId: string, res: Response): 
  *  Division report PDF (stats + subject averages + eligibility)
  * ------------------------------------------------------------------- */
 
-export const streamDivisionReportPdf = async (divisionId: string, res: Response): Promise<void> => {
+export const streamDivisionReportPdf = async (
+  divisionId: string,
+  res: Response,
+  studentIds?: string[],
+): Promise<void> => {
   const division = await Division.findById(divisionId).populate('branch academicYear');
   if (!division) throw NotFound('Division not found');
 
-  const [stats, subjects, eligibility] = await Promise.all([
+  const [statsAll, subjectsAll, eligibilityAll] = await Promise.all([
     divisionAttendanceStats(divisionId),
     divisionSubjectAverages(divisionId),
     divisionEligibility(divisionId),
   ]);
 
-  const filename = `division-${division.code}.pdf`;
+  const filterSet = studentIds && studentIds.length > 0
+    ? new Set(studentIds.map(s => s.toString()))
+    : null;
+
+  const stats = filterSet
+    ? statsAll.filter(s => filterSet.has(s.studentId.toString()))
+    : statsAll;
+  const eligibility = filterSet
+    ? eligibilityAll.filter(e => filterSet.has(e.studentId.toString()))
+    : eligibilityAll;
+
+  // Subject averages: when filtered, recompute from the filtered students' per-subject rows
+  type SubjectAvg = { code: string; name: string; total: number; present: number; pct: number };
+  let subjects: SubjectAvg[];
+  if (filterSet) {
+    const bySubject = new Map<string, SubjectAvg>();
+    for (const e of eligibility) {
+      for (const sub of e.subjects) {
+        const cur = bySubject.get(sub.subjectId) ?? { code: sub.code, name: sub.name, total: 0, present: 0, pct: 0 };
+        cur.total += sub.total;
+        cur.present += sub.present;
+        bySubject.set(sub.subjectId, cur);
+      }
+    }
+    subjects = Array.from(bySubject.values())
+      .map(s => ({ ...s, pct: s.total ? (s.present / s.total) * 100 : 0 }))
+      .sort((a, b) => b.pct - a.pct);
+  } else {
+    subjects = subjectsAll;
+  }
+
+  const filename = `division-${division.code}${filterSet ? '-filtered' : ''}.pdf`;
   res.setHeader('Content-Type', 'application/pdf');
   res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
 
@@ -132,8 +167,8 @@ export const streamDivisionReportPdf = async (divisionId: string, res: Response)
 
   drawHeader(
     doc,
-    `Attendance Report · ${division.code}`,
-    `${pickName(division.branch)}  ·  ${pickName(division.academicYear)}  ·  ${division.name}`
+    `Attendance Report · ${division.code}${filterSet ? ' (Filtered)' : ''}`,
+    `${pickName(division.branch)}  ·  ${pickName(division.academicYear)}  ·  ${division.name}${filterSet ? `  ·  ${stats.length} of ${statsAll.length} students` : ''}`
   );
 
   // Summary stats
@@ -175,7 +210,8 @@ export const streamDivisionReportPdf = async (divisionId: string, res: Response)
   y += 14;
   doc.strokeColor('#E2E8F0').moveTo(left, y - 4).lineTo(left + cols.reduce((a, c) => a + c.width, 0), y - 4).stroke();
 
-  const eligibleById = new Map(eligibility.map(e => [e.studentId, e.overallEligible]));
+  // Normalise both sides to strings so ObjectId vs string never causes a miss.
+  const eligibleById = new Map(eligibility.map(e => [e.studentId.toString(), e.overallEligible]));
 
   doc.font('Helvetica').fontSize(10);
   for (const s of stats) {
@@ -185,7 +221,7 @@ export const streamDivisionReportPdf = async (divisionId: string, res: Response)
     doc.fillColor(HEADER_COLOR).text(s.name, x, y, { width: cols[1]!.width }); x += cols[1]!.width;
     doc.fillColor(s.pct >= 75 ? '#10B981' : '#EF4444').text(`${Math.round(s.pct)}%`, x, y, { width: cols[2]!.width }); x += cols[2]!.width;
     doc.fillColor(MUTED).text(`${s.present} / ${s.total}`, x, y, { width: cols[3]!.width }); x += cols[3]!.width;
-    const ok = eligibleById.get(s.studentId) ?? false;
+    const ok = eligibleById.get(s.studentId.toString()) ?? false;
     doc.fillColor(ok ? '#10B981' : '#EF4444').text(ok ? 'Eligible' : 'Ineligible', x, y, { width: cols[4]!.width });
     y += 16;
   }

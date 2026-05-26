@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, UserCheck, GraduationCap, Calendar, FolderOpen,
-  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen, ClipboardList,
+  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen, ClipboardList, MessageSquare,
 } from 'lucide-react';
 import type { Role } from './useRole';
 
@@ -12,15 +12,15 @@ export interface NavItem {
 }
 
 export const studentNav: NavItem[] = [
-  { name: 'Dashboard',  icon: <LayoutDashboard size={20} />, path: '/dashboard' },
-  { name: 'Attendance', icon: <UserCheck size={20} />,       path: '/attendance' },
-  { name: 'Grades',     icon: <GraduationCap size={20} />,   path: '/grades' },
-  { name: 'Schedule',   icon: <Calendar size={20} />,        path: '/schedule' },
-  { name: 'Resources',  icon: <FolderOpen size={20} />,      path: '/resources' },
-  { name: 'Finance',    icon: <CreditCard size={20} />,      path: '/finance' },
-  { name: 'Reports',    icon: <TrendingUp size={20} />,      path: '/reports' },
-  { name: 'Directory',  icon: <Users size={20} />,           path: '/directory' },
-  { name: 'Automation', icon: <Cpu size={20} />,             path: '/automation' },
+  { name: 'Dashboard',      icon: <LayoutDashboard size={20} />, path: '/dashboard' },
+  { name: 'Attendance',     icon: <UserCheck size={20} />,       path: '/attendance' },
+  { name: 'Grades',         icon: <GraduationCap size={20} />,   path: '/grades' },
+  { name: 'Schedule',       icon: <Calendar size={20} />,        path: '/schedule' },
+  { name: 'Resources',      icon: <FolderOpen size={20} />,      path: '/resources' },
+  { name: 'Finance',        icon: <CreditCard size={20} />,      path: '/finance' },
+  { name: 'Reports',        icon: <TrendingUp size={20} />,      path: '/reports' },
+  { name: 'Directory',      icon: <Users size={20} />,           path: '/directory' },
+  { name: 'Chat Interface', icon: <MessageSquare size={20} />,   path: '/chat-interface' },
 ];
 
 export const teacherNav: NavItem[] = [
@@ -30,6 +30,7 @@ export const teacherNav: NavItem[] = [
   { name: 'Assignments & Notes', icon: <ClipboardList size={20} />,   path: '/assignments' },
   { name: 'Curriculum',          icon: <Layers size={20} />,          path: '/curriculum' },
   { name: 'Research',            icon: <Award size={20} />,           path: '/research' },
+  { name: 'Chat Interface',      icon: <MessageSquare size={20} />,   path: '/chat-interface' },
   { name: 'Automation',          icon: <Cpu size={20} />,             path: '/automation' },
 ];
 

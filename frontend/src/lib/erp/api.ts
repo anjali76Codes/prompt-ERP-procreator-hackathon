@@ -237,5 +237,17 @@ const downloadPdf = async (path: string, filename: string): Promise<void> => {
 export const downloadLectureRosterPdf = (lectureId: string): Promise<void> =>
   downloadPdf(`/lectures/${lectureId}/report.pdf`, `lecture-${lectureId}.pdf`);
 
-export const downloadDivisionReportPdf = (divisionId: string, divisionCode = 'division'): Promise<void> =>
-  downloadPdf(`/divisions/${divisionId}/attendance/report.pdf`, `${divisionCode}-attendance.pdf`);
+export const downloadDivisionReportPdf = (
+  divisionId: string,
+  divisionCode = 'division',
+  studentIds?: string[],
+): Promise<void> => {
+  const qs = studentIds && studentIds.length > 0
+    ? `?studentIds=${encodeURIComponent(studentIds.join(','))}`
+    : '';
+  const suffix = studentIds && studentIds.length > 0 ? '-filtered' : '';
+  return downloadPdf(
+    `/divisions/${divisionId}/attendance/report.pdf${qs}`,
+    `${divisionCode}${suffix}-attendance.pdf`,
+  );
+};

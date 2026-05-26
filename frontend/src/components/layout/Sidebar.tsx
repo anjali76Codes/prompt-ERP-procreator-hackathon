@@ -1,6 +1,7 @@
 import React from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { HeadphonesIcon, LogOut, Menu, User } from 'lucide-react';
+import { toast } from 'react-toastify';
 import { Logo } from '../ui/Logo';
 import {
   recentActivity, studentNav, teacherNav, teacherTools, type NavItem,
@@ -62,6 +63,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const handleLogout = (e: React.MouseEvent) => {
     e.preventDefault();
     logout();
+    toast.info('Signed out');
     navigate('/signin', { replace: true });
   };
 

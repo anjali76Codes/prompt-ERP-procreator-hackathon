@@ -65,5 +65,9 @@ export const downloadLectureRosterPdf = asyncHandler(async (req, res) => {
 export const downloadDivisionReportPdf = asyncHandler(async (req, res) => {
   const divisionId = req.params.id;
   if (!divisionId) throw BadRequest('Division id required');
-  await streamDivisionReportPdf(divisionId, res);
+  const raw = req.query.studentIds;
+  const studentIds = typeof raw === 'string' && raw.length > 0
+    ? raw.split(',').map(s => s.trim()).filter(Boolean)
+    : undefined;
+  await streamDivisionReportPdf(divisionId, res, studentIds);
 });
