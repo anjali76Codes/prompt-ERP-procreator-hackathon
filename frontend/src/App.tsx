@@ -8,6 +8,8 @@ import { AttendanceOverview } from './pages/AttendanceOverview';
 import { AttendanceMark } from './pages/AttendanceMark';
 import { AttendanceValidate } from './pages/AttendanceValidate';
 import { AttendanceAnalytics } from './pages/AttendanceAnalytics';
+import { AttendanceStudents } from './pages/AttendanceStudents';
+import { AttendanceSchedules } from './pages/AttendanceSchedules';
 import { Placeholder } from './pages/Placeholder';
 import { Profile } from './pages/Profile';
 import { PendingApproval } from './pages/PendingApproval';
@@ -55,6 +57,12 @@ const App = () => {
             } />
             <Route path="/attendance/analytics" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceAnalytics /></ProtectedRoute>
+            } />
+            <Route path="/attendance/students" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceStudents /></ProtectedRoute>
+            } />
+            <Route path="/attendance/schedules" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceSchedules /></ProtectedRoute>
             } />
 
             {/* Roadmap stubs */}
