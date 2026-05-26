@@ -1,41 +1,37 @@
-import React from 'react';
-import { Cpu, Bell, Settings, Eye, EyeOff, FileText, Lock } from 'lucide-react';
+import React, { useEffect } from 'react';
+import { Cpu, Eye, EyeOff, FileText, Lock } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { ChatPanel } from '../components/automation/ChatPanel';
 import { WorkflowPipeline } from '../components/automation/WorkflowPipeline';
 import { TerminalLog } from '../components/automation/TerminalLog';
 import { SavedWorkflows } from '../components/automation/SavedWorkflows';
 import { useAutomationEngine, ACTIVE_MODEL, CONNECTED_CONTEXT } from '../lib/automation/engine';
+import { useSidebarState } from '../lib/useSidebarState';
 import s from '../components/automation/Automation.module.css';
 
 export const Automation: React.FC = () => {
   const engine = useAutomationEngine();
   const split = engine.workflow !== null;
+  const { setCollapsed } = useSidebarState();
 
-  const TopBarSlot = (
-    <div className="dashboard-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <span style={{ fontSize: '1rem', fontWeight: 700, color: '#1E293B', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <Cpu size={20} color="var(--primary)" /> AI Workflow
-        </span>
-      </div>
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#EFF6FF', padding: '0.35rem 0.75rem', borderRadius: '2rem', border: '1px solid #DBEAFE' }}>
+  // Auto-collapse the sidebar the moment a workflow starts — gives the pipeline room.
+  useEffect(() => { if (split) setCollapsed(true); }, [split, setCollapsed]);
+
+  return (
+    <AppLayout
+      padded={false}
+      pageIcon={<Cpu size={18} />}
+      pageTitle="AI Workflow"
+      pageBreadcrumb="Automation Assistant"
+      pageActions={
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#EFF6FF', padding: '0.3rem 0.75rem', borderRadius: '2rem', border: '1px solid #DBEAFE' }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10B981' }} className="pulse-dot" />
-          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)', letterSpacing: '0.2px' }}>
+          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.2px' }}>
             SYSTEM ONLINE
           </span>
         </div>
-        <div className="topbar-icons">
-          <Bell size={20} />
-          <Settings size={20} />
-        </div>
-      </div>
-    </div>
-  );
-
-  return (
-    <AppLayout topBar={TopBarSlot} padded={false}>
+      }
+    >
       <div className={s.page}>
         <div className={s.workspace}>
           {/* LEFT: chat */}

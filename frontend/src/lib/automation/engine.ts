@@ -149,7 +149,7 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isPaused, setPaused] = useState(false);
-  const [showLogs, setShowLogs] = useState(true);
+  const [showLogs, setShowLogs] = useState(false);
   const tickRef = useRef<number | null>(null);
   const stepTimers = useRef<number[]>([]);
 

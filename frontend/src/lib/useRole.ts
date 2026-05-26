@@ -1,30 +1,14 @@
-import { useEffect, useState } from 'react';
+import { useAuth } from './auth/AuthContext';
+import type { Role } from './auth/types';
 
-export type Role = 'student' | 'teacher' | 'admin';
+export type { Role };
 
-const STORAGE_KEY = 'role';
-
-const readRole = (): Role => {
-  if (typeof window === 'undefined') return 'student';
-  const v = window.localStorage.getItem(STORAGE_KEY);
-  return v === 'teacher' || v === 'admin' ? v : 'student';
-};
-
+/**
+ * Reads the current user's role from the auth context. Falls back to 'student'
+ * when there is no logged-in user — pages that need stricter behavior should
+ * wrap themselves in <ProtectedRoute> instead of relying on this default.
+ */
 export const useRole = () => {
-  const [role, setRoleState] = useState<Role>(readRole);
-
-  useEffect(() => {
-    const onStorage = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) setRoleState(readRole());
-    };
-    window.addEventListener('storage', onStorage);
-    return () => window.removeEventListener('storage', onStorage);
-  }, []);
-
-  const setRole = (next: Role) => {
-    window.localStorage.setItem(STORAGE_KEY, next);
-    setRoleState(next);
-  };
-
-  return { role, setRole };
+  const { user } = useAuth();
+  return { role: (user?.role ?? 'student') as Role };
 };

@@ -42,7 +42,7 @@
   transition: all 0.65s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.chatCard.full   { height: 580px; max-width: 720px; margin: 2rem auto 0 auto; }
+.chatCard.full   { height: 100%; max-width: 100%; margin: 0; flex: 1; }
 .chatCard.split  { height: 540px; max-width: 100%; margin: 0; }
 
 .chatHeader {
@@ -393,7 +393,7 @@
   width: 100%;
 }
 
-.quickActions.full  { max-width: 720px; margin: 1rem auto 0 auto; }
+.quickActions.full  { max-width: 100%; }
 .quickActions.split { max-width: 100%; }
 
 .quickActionBtn {
@@ -425,7 +425,7 @@
   width: 100%;
 }
 
-.templates.full  { max-width: 720px; margin: 1.5rem auto 0 auto; }
+.templates.full  { max-width: 100%; }
 .templates.split { max-width: 100%; margin-top: 1.5rem; }
 
 .templatesHeader {
@@ -444,7 +444,7 @@
 
 .templatesGrid {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: 0.75rem;
 }
 

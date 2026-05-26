@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  UserCheck, Calendar as CalIcon, Bell, Settings, Plus, TrendingUp,
+  UserCheck, Plus, TrendingUp,
   AlertCircle, RefreshCw, Search, Mail, FileSpreadsheet, ChevronRight,
   AlertTriangle, FileUp, Clock, BookOpen,
 } from 'lucide-react';
@@ -50,37 +50,24 @@ export const AttendanceOverview: React.FC = () => {
   const navigate = useNavigate();
   const [term, setTerm] = useState<'Fall 2023' | 'Spring 2024'>('Fall 2023');
 
-  const TopBarSlot = (
-    <div className="dashboard-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-        <span style={{ fontSize: '1.15rem', fontWeight: 800, color: '#0F172A', display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <UserCheck size={22} color="var(--primary)" /> Attendance Overview
-        </span>
-        <span style={{ fontSize: '0.85rem', color: '#64748B', fontWeight: 500, display: 'flex', alignItems: 'center', gap: '0.4rem', borderLeft: '1px solid #E2E8F0', paddingLeft: '1rem' }}>
-          <CalIcon size={14} /> AY 2023-24 <span style={{ color: '#94A3B8' }}>•</span> Semester VII
-        </span>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-        <div className="filter-group">
-          <button className={term === 'Fall 2023' ? 'active' : ''} onClick={() => setTerm('Fall 2023')}>Fall 2023</button>
-          <button className={term === 'Spring 2024' ? 'active' : ''} onClick={() => setTerm('Spring 2024')}>Spring 2024</button>
-        </div>
-
-        <button className="btn btn-primary" onClick={() => navigate('/attendance/mark')}>
-          <Plus size={16} /> Mark Attendance
-        </button>
-
-        <div className="topbar-icons" style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '1.25rem' }}>
-          <Bell size={20} />
-          <Settings size={20} />
-        </div>
-      </div>
-    </div>
-  );
-
   return (
-    <AppLayout topBar={TopBarSlot} background="#F8FAFC">
+    <AppLayout
+      background="#F8FAFC"
+      pageIcon={<UserCheck size={18} />}
+      pageTitle="Attendance Overview"
+      pageBreadcrumb={<>AY 2023-24 <span className="current">•</span> Semester VII</>}
+      pageActions={
+        <>
+          <div className="filter-group">
+            <button className={term === 'Fall 2023' ? 'active' : ''} onClick={() => setTerm('Fall 2023')}>Fall 2023</button>
+            <button className={term === 'Spring 2024' ? 'active' : ''} onClick={() => setTerm('Spring 2024')}>Spring 2024</button>
+          </div>
+          <button className="btn btn-primary" onClick={() => navigate('/attendance/mark')}>
+            <Plus size={16} /> Mark Attendance
+          </button>
+        </>
+      }
+    >
       <div className="stack-lg">
         {/* Row 1: Metric cards */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>

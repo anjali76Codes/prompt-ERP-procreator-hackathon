@@ -1,60 +1,77 @@
 import React from 'react';
 import { Search, Bell, HelpCircle, Settings } from 'lucide-react';
-import { useRole } from '../../lib/useRole';
+import { useAuth } from '../../lib/auth/AuthContext';
+import type { AppUser } from '../../lib/auth/types';
 
-interface TopBarProps {
-  showSearch?: boolean;
-  left?: React.ReactNode;
-  right?: React.ReactNode;
-}
-
-interface UserMeta {
-  name: string;
-  subtitle: string;
-  avatarUrl: string;
-}
-
-const USERS: Record<string, UserMeta> = {
-  teacher: {
-    name: 'Prof. Adrian Miller',
-    subtitle: 'Senior Faculty, Dept. of CS',
-    avatarUrl: 'https://images.unsplash.com/photo-1560250097-0b93528c311a?auto=format&fit=crop&w=100&h=100&q=80',
-  },
-  student: {
-    name: 'Alex Rivera',
-    subtitle: 'B.Tech CS • Semester 5',
-    avatarUrl: 'https://ui-avatars.com/api/?name=Alex+Rivera&background=0D8ABC&color=fff',
-  },
-  admin: {
-    name: 'Admin Console',
-    subtitle: 'Verification Officer',
-    avatarUrl: 'https://ui-avatars.com/api/?name=Admin&background=0F172A&color=fff',
-  },
+const subtitleFor = (user: AppUser): string => {
+  if (user.role === 'student') return `${user.branch ?? ''} • Year ${user.year ?? 'FE'} • Div ${user.division ?? '-'}`.trim();
+  if (user.role === 'teacher') return `${user.branch ?? ''}${user.department ? ' • ' + user.department : ''}`.trim() || 'Faculty';
+  return 'Administrator';
 };
 
-export const TopBar: React.FC<TopBarProps> = ({ showSearch = true, left, right }) => {
-  const { role } = useRole();
-  const user = USERS[role] ?? USERS.student;
+const avatarFor = (user: AppUser): string => {
+  const safeName = encodeURIComponent(user.name || user.email);
+  return `https://ui-avatars.com/api/?name=${safeName}&background=0D8ABC&color=fff`;
+};
+
+interface TopBarProps {
+  /** Left-side identity for the page: small icon + title. */
+  icon?: React.ReactNode;
+  title?: React.ReactNode;
+  /** Optional breadcrumb / sub-line shown beneath the title. */
+  breadcrumb?: React.ReactNode;
+  /** Optional page-specific actions (filters, primary buttons, etc.) shown in the middle band. */
+  actions?: React.ReactNode;
+  /** When true, show the global search instead of the title block. */
+  showSearch?: boolean;
+}
+
+/**
+ * Every page renders the same TopBar shell.
+ * - Left slot: page identity (icon + title) OR the global search.
+ * - Middle slot: page-specific actions (filters, primary buttons).
+ * - Right slot: ALWAYS bell + help + settings + user — never overridden.
+ *
+ * Pages should never hand-roll their own .dashboard-topbar; pass slots instead.
+ */
+export const TopBar: React.FC<TopBarProps> = ({
+  icon, title, breadcrumb, actions, showSearch = false,
+}) => {
+  const { user } = useAuth();
+  const role = user?.role ?? 'student';
+  const displayName = user?.name ?? 'Guest';
+  const subtitle = user ? subtitleFor(user) : 'Not signed in';
+  const avatarUrl = user ? avatarFor(user) : 'https://ui-avatars.com/api/?name=Guest&background=64748B&color=fff';
 
   return (
     <div className="dashboard-topbar">
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', flex: 1 }}>
-        {left}
-        {showSearch && !left && (
+      <div className="topbar-left">
+        {showSearch ? (
           <div className="topbar-search">
             <Search size={18} color="var(--text-muted)" style={{ marginRight: '0.5rem' }} />
             <input
               type="text"
               placeholder={role === 'teacher'
                 ? 'Search student ID, modules, or schedules...'
-                : 'Search modules, files, or tasks...'}
+                : role === 'admin'
+                  ? 'Search users, courses, or audit logs...'
+                  : 'Search modules, files, or tasks...'}
             />
           </div>
-        )}
+        ) : title || icon ? (
+          <div className="topbar-identity">
+            {icon && <span className="topbar-icon">{icon}</span>}
+            <div className="topbar-identity-text">
+              {breadcrumb && <div className="topbar-breadcrumb">{breadcrumb}</div>}
+              {title && <div className="topbar-title">{title}</div>}
+            </div>
+          </div>
+        ) : null}
       </div>
 
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-        {right}
+      {actions && <div className="topbar-actions">{actions}</div>}
+
+      <div className="topbar-right">
         <div className="topbar-icons">
           <Bell size={20} />
           <HelpCircle size={20} />
@@ -62,10 +79,10 @@ export const TopBar: React.FC<TopBarProps> = ({ showSearch = true, left, right }
         </div>
         <div className="topbar-user">
           <div className="topbar-user-info">
-            <div className="topbar-user-name">{user.name}</div>
-            <div className="topbar-user-subtitle">{user.subtitle}</div>
+            <div className="topbar-user-name">{displayName}</div>
+            <div className="topbar-user-subtitle">{subtitle}</div>
           </div>
-          <img src={user.avatarUrl} alt={user.name} className="topbar-user-avatar" />
+          <img src={avatarUrl} alt={displayName} className="topbar-user-avatar" />
         </div>
       </div>
     </div>

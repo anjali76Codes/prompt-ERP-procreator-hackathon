@@ -1,11 +1,12 @@
 import React from 'react';
-import { NavLink } from 'react-router-dom';
-import { HeadphonesIcon, LogOut, Menu } from 'lucide-react';
+import { NavLink, useNavigate } from 'react-router-dom';
+import { HeadphonesIcon, LogOut, Menu, User } from 'lucide-react';
 import { Logo } from '../ui/Logo';
 import {
   recentActivity, studentNav, teacherNav, teacherTools, type NavItem,
 } from '../../lib/navConfig';
 import type { Role } from '../../lib/useRole';
+import { useAuth } from '../../lib/auth/AuthContext';
 
 interface SidebarProps {
   isCollapsed: boolean;
@@ -55,6 +56,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const isTeacher = role === 'teacher';
   const primaryNav = isTeacher ? teacherNav : studentNav;
+  const { logout } = useAuth();
+  const navigate = useNavigate();
+
+  const handleLogout = (e: React.MouseEvent) => {
+    e.preventDefault();
+    logout();
+    navigate('/signin', { replace: true });
+  };
 
   return (
     <div className={`dashboard-sidebar ${isCollapsed ? 'collapsed' : ''}`}>
@@ -84,14 +93,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
       </nav>
 
       <div className="sidebar-footer">
+        <NavLink to="/profile" className={({ isActive }) => `nav-item ${isActive ? 'active' : ''}`} title="Profile">
+          <User size={20} />
+          {!isCollapsed && <span>Profile</span>}
+        </NavLink>
         <NavLink to="/support" className="nav-item" title="Support">
           <HeadphonesIcon size={20} />
           {!isCollapsed && <span>Support</span>}
         </NavLink>
-        <NavLink to="/signin" className="nav-item" title="Logout">
+        <a href="/signin" onClick={handleLogout} className="nav-item" title="Logout">
           <LogOut size={20} />
           {!isCollapsed && <span>Logout</span>}
-        </NavLink>
+        </a>
       </div>
     </div>
   );

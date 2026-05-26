@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { TrendingUp, ChevronRight, Bell, Settings } from 'lucide-react';
+import { TrendingUp, ChevronRight, UserCheck } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAttendance } from '../lib/AttendanceContext';
 
@@ -27,42 +27,35 @@ export const AttendanceAnalytics: React.FC = () => {
   const { session } = useAttendance();
   const [range, setRange] = useState<RangeKey>('Last 30 Days');
 
-  const TopBarSlot = (
-    <div className="dashboard-topbar">
-      <div className="page-title-block">
-        <div className="breadcrumbs">
-          <button onClick={() => navigate('/attendance')}>Attendance</button>
-          <ChevronRight size={12} />
-          <span className="current">Analytics & Reports</span>
-        </div>
-        <h1>Attendance Analytics & Reports</h1>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-        <div className="filter-group">
-          {RANGES.map(r => (
-            <button key={r} className={range === r ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>
-          ))}
-        </div>
-
-        <button className="btn btn-primary" onClick={() => alert('Custom range picker coming soon')}>
-          Custom Range
-        </button>
-
-        <div className="topbar-icons" style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '1.25rem' }}>
-          <Bell size={20} />
-          <Settings size={20} />
-        </div>
-      </div>
-    </div>
-  );
-
   const healthScore = 82;
   const dashLenLg = 364.42;
   const wasJustValidated = session.validated;
 
   return (
-    <AppLayout topBar={TopBarSlot} background="#F8FAFC">
+    <AppLayout
+      background="#F8FAFC"
+      pageIcon={<UserCheck size={18} />}
+      pageTitle="Attendance Analytics"
+      pageBreadcrumb={
+        <>
+          <button onClick={() => navigate('/attendance')}>Attendance</button>
+          <ChevronRight size={11} />
+          <span className="current">Analytics &amp; Reports</span>
+        </>
+      }
+      pageActions={
+        <>
+          <div className="filter-group">
+            {RANGES.map(r => (
+              <button key={r} className={range === r ? 'active' : ''} onClick={() => setRange(r)}>{r}</button>
+            ))}
+          </div>
+          <button className="btn btn-primary" onClick={() => alert('Custom range picker coming soon')}>
+            Custom Range
+          </button>
+        </>
+      }
+    >
       <div style={{ display: 'grid', gridTemplateColumns: '32% 65.5%', gap: '2.5%', alignItems: 'flex-start' }}>
         {/* LEFT column */}
         <div className="stack-lg">

@@ -1,6 +1,6 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Check, X, ChevronRight, SlidersHorizontal } from 'lucide-react';
+import { Check, X, ChevronRight, SlidersHorizontal, UserCheck } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAttendance } from '../lib/AttendanceContext';
 
@@ -19,38 +19,6 @@ export const AttendanceMark: React.FC = () => {
   const { lecture, roster, draftSavedAt } = session;
 
   const dashLen = 339.29;
-
-  const TopBarSlot = (
-    <div className="dashboard-topbar">
-      <div className="page-title-block">
-        <div className="breadcrumbs">
-          <button onClick={() => navigate('/attendance')}>Attendance</button>
-          <ChevronRight size={12} />
-          <span className="current">Mark Entry</span>
-        </div>
-        <h1>{lecture.subject}</h1>
-        <div className="page-title-meta">
-          <span>👥 {lecture.section}</span>
-          <span className="dot">•</span>
-          <span>⏰ {lecture.timeSlot}</span>
-          <span className="dot">•</span>
-          <span>📅 {lecture.date}</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-        <button className="btn btn-primary" onClick={() => setAllStatus('P')}>
-          <Check size={14} /> Mark All Present
-        </button>
-        <button className="btn btn-secondary" onClick={() => setAllStatus('A')}>
-          <X size={14} /> Mark All Absent
-        </button>
-        <button className="btn btn-secondary btn-icon-only" aria-label="Filters">
-          <SlidersHorizontal size={15} />
-        </button>
-      </div>
-    </div>
-  );
 
   const BottomBar = (
     <div className="action-bar">
@@ -71,7 +39,34 @@ export const AttendanceMark: React.FC = () => {
   );
 
   return (
-    <AppLayout topBar={TopBarSlot} bottomBar={BottomBar} background="#F8FAFC">
+    <AppLayout
+      background="#F8FAFC"
+      bottomBar={BottomBar}
+      pageIcon={<UserCheck size={18} />}
+      pageTitle={lecture.subject}
+      pageBreadcrumb={
+        <>
+          <button onClick={() => navigate('/attendance')}>Attendance</button>
+          <ChevronRight size={11} />
+          <span className="current">Mark Entry</span>
+          <span style={{ color: '#94A3B8', margin: '0 0.35rem' }}>•</span>
+          <span>{lecture.section} • {lecture.timeSlot} • {lecture.date}</span>
+        </>
+      }
+      pageActions={
+        <>
+          <button className="btn btn-primary" onClick={() => setAllStatus('P')}>
+            <Check size={14} /> Mark All Present
+          </button>
+          <button className="btn btn-secondary" onClick={() => setAllStatus('A')}>
+            <X size={14} /> Mark All Absent
+          </button>
+          <button className="btn btn-secondary btn-icon-only" aria-label="Filters">
+            <SlidersHorizontal size={15} />
+          </button>
+        </>
+      }
+    >
       <div style={{ display: 'grid', gridTemplateColumns: '66% 31.5%', gap: '2.5%' }}>
         {/* Roster Table */}
         <div className="card card-compact" style={{ overflow: 'hidden' }}>

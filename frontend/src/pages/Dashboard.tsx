@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { FileText, PlaySquare, Folder, TrendingUp } from 'lucide-react';
+import { FileText, PlaySquare, Folder, TrendingUp, LayoutDashboard } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { MetricCard } from '../components/dashboard/MetricCard';
 import { ProgressBar } from '../components/dashboard/ProgressBar';
@@ -28,11 +28,11 @@ export const Dashboard: React.FC = () => {
   if (role === 'teacher') return <TeacherDashboard />;
 
   return (
-    <AppLayout>
-      <div style={{ marginBottom: '1.5rem', fontSize: '0.875rem', color: 'var(--text-muted)' }}>
-        Academic &gt; <span style={{ color: 'var(--primary)', fontWeight: 500 }}>Dashboard</span>
-      </div>
-
+    <AppLayout
+      pageIcon={<LayoutDashboard size={18} />}
+      pageTitle="Dashboard"
+      pageBreadcrumb="Academic"
+    >
       <h1 style={{ fontSize: '1.75rem', fontWeight: 700, marginBottom: '2rem' }}>Good Morning, Alex!</h1>
 
       <div className="dashboard-grid">

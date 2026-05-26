@@ -1,8 +1,8 @@
 import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  AlertTriangle, FileText, ShieldCheck, BarChart2,
-  SlidersHorizontal, ArrowUpRight, Bell, Settings,
+  AlertTriangle, FileText, ShieldCheck, ChevronRight,
+  SlidersHorizontal, ArrowUpRight, UserCheck,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAttendance } from '../lib/AttendanceContext';
@@ -39,42 +39,6 @@ export const AttendanceValidate: React.FC = () => {
   const { session, presentCount, absentCount, markValidated } = useAttendance();
   const { lecture } = session;
 
-  const TopBarSlot = (
-    <div className="dashboard-topbar">
-      <div className="page-title-block">
-        <span className="status-pill info" style={{ alignSelf: 'flex-start' }}>ACTIVE REVIEW SESSION</span>
-        <h1 style={{ marginTop: '0.15rem' }}>Advanced Macroeconomics (ECON-402)</h1>
-        <div className="page-title-meta">
-          <span>Section B</span>
-          <span className="dot">•</span>
-          <span>Semester 2</span>
-          <span className="dot">•</span>
-          <span style={{ color: 'var(--primary)' }}>Final Review Phase</span>
-        </div>
-      </div>
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '1.25rem' }}>
-        <div style={{ backgroundColor: '#025793', borderRadius: 'var(--radius-md)', padding: '0.5rem 1.25rem', display: 'flex', alignItems: 'center', gap: '1rem', color: 'white', boxShadow: '0 4px 10px rgba(2,87,147,0.15)' }}>
-          <div>
-            <div style={{ fontSize: '0.575rem', fontWeight: 700, color: '#93C5FD', textTransform: 'uppercase', letterSpacing: '0.5px' }}>CURRENT VALIDATION RATE</div>
-            <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.4rem', marginTop: '0.1rem' }}>
-              <span style={{ fontSize: '1.45rem', fontWeight: 800 }}>92.4%</span>
-              <span style={{ fontSize: '0.675rem', color: '#6EE7B7', fontWeight: 700 }}>+2.1% from previous week</span>
-            </div>
-          </div>
-          <div style={{ width: 34, height: 34, borderRadius: 'var(--radius-md)', backgroundColor: 'rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <BarChart2 size={16} color="white" />
-          </div>
-        </div>
-
-        <div className="topbar-icons" style={{ borderLeft: '1px solid #E2E8F0', paddingLeft: '1.25rem' }}>
-          <Bell size={20} />
-          <Settings size={20} />
-        </div>
-      </div>
-    </div>
-  );
-
   const BottomBar = (
     <div className="action-bar dark">
       <span className="action-bar-note" style={{ color: '#CBD5E1' }}>
@@ -101,7 +65,26 @@ export const AttendanceValidate: React.FC = () => {
   );
 
   return (
-    <AppLayout topBar={TopBarSlot} bottomBar={BottomBar} background="#F8FAFC">
+    <AppLayout
+      background="#F8FAFC"
+      bottomBar={BottomBar}
+      pageIcon={<UserCheck size={18} />}
+      pageTitle="Advanced Macroeconomics (ECON-402)"
+      pageBreadcrumb={
+        <>
+          <button onClick={() => navigate('/attendance')}>Attendance</button>
+          <ChevronRight size={11} />
+          <span className="current">Validate</span>
+          <span style={{ color: '#94A3B8', margin: '0 0.35rem' }}>•</span>
+          <span>Section B • Semester 2 • Final Review</span>
+        </>
+      }
+      pageActions={
+        <span className="status-pill info" style={{ fontSize: '0.625rem' }}>
+          VALIDATION RATE 92.4% &nbsp;<span style={{ color: '#10B981' }}>+2.1%</span>
+        </span>
+      }
+    >
       <div className="stack-lg">
         {/* Subheader info row */}
         <div className="card card-compact" style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1.25rem' }}>

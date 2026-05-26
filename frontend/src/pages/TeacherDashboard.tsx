@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  Calendar, Megaphone, FileSpreadsheet, BarChart, Send, CheckSquare, Plus,
+  Calendar, Megaphone, FileSpreadsheet, BarChart, Send, CheckSquare, Plus, LayoutDashboard,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 
@@ -57,7 +57,11 @@ export const TeacherDashboard: React.FC = () => {
   };
 
   return (
-    <AppLayout>
+    <AppLayout
+      pageIcon={<LayoutDashboard size={18} />}
+      pageTitle="Dashboard"
+      pageBreadcrumb="Faculty Overview"
+    >
       <div className="dashboard-grid">
         {/* Left column */}
         <div className="stack-lg">
