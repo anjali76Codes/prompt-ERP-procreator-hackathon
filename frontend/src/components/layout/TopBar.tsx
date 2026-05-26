@@ -1,6 +1,7 @@
 import React from 'react';
-import { Search, Bell, HelpCircle, Settings } from 'lucide-react';
+import { Search, HelpCircle, Settings } from 'lucide-react';
 import { useAuth } from '../../lib/auth/AuthContext';
+import { NotificationBell } from './NotificationBell';
 import type { AppUser } from '../../lib/auth/types';
 
 const subtitleFor = (user: AppUser): string => {
@@ -73,7 +74,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
       <div className="topbar-right">
         <div className="topbar-icons">
-          <Bell size={20} />
+          <NotificationBell />
           <HelpCircle size={20} />
           <Settings size={20} />
         </div>

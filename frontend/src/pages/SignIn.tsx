@@ -8,6 +8,7 @@ import { Checkbox } from '../components/ui/Checkbox';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../lib/auth/AuthContext';
 import { ApiError } from '../lib/api';
+import { toast } from 'react-toastify';
 
 interface LocationState { from?: string }
 
@@ -27,6 +28,7 @@ export const SignIn: React.FC = () => {
     setSubmitting(true);
     try {
       const user = await login(email, password);
+      toast.success(`Welcome back, ${user.name || user.email.split('@')[0]} 👋`);
       const state = (location.state as LocationState | null) ?? null;
       const fallback =
         user.role === 'admin' ? '/admin' :
@@ -34,7 +36,9 @@ export const SignIn: React.FC = () => {
         '/dashboard';
       navigate(state?.from ?? fallback, { replace: true });
     } catch (err) {
-      setError(err instanceof ApiError ? err.message : 'Sign-in failed');
+      const message = err instanceof ApiError ? err.message : 'Sign-in failed';
+      setError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }

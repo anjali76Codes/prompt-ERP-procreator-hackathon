@@ -1,10 +1,14 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { UserCheck, Search, ChevronRight, ShieldCheck, ShieldAlert } from 'lucide-react';
+import {
+  UserCheck, Search, ChevronRight, ShieldCheck, ShieldAlert, X, FileDown, Bell,
+} from 'lucide-react';
+import { SendNotificationModal, type NotificationRecipient } from '../components/notifications/SendNotificationModal';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAttendance } from '../lib/AttendanceContext';
 import {
   fetchDivisionStats, fetchDivisionStudents, fetchDivisionEligibility,
+  downloadDivisionReportPdf,
 } from '../lib/erp/api';
 import type {
   DivisionStatRow, EligibilityRow, StudentLite,
@@ -13,6 +17,33 @@ import { ApiError } from '../lib/api';
 
 const pctClass = (pct: number) =>
   pct >= 80 ? 'success' : pct >= 65 ? 'info' : 'danger';
+
+type Bucket = 'all' | 'gte75' | '60to75' | 'below60' | 'noData';
+type Eligibility = 'all' | 'eligible' | 'ineligible';
+type SortKey = 'pctAsc' | 'pctDesc' | 'nameAsc' | 'rollAsc';
+
+const BUCKET_LABEL: Record<Bucket, string> = {
+  all: 'All',
+  gte75: '≥75%',
+  '60to75': '60–75%',
+  below60: 'Below 60%',
+  noData: 'No data',
+};
+const ELIG_LABEL: Record<Eligibility, string> = {
+  all: 'All', eligible: 'Eligible', ineligible: 'Ineligible',
+};
+const SORT_LABEL: Record<SortKey, string> = {
+  pctAsc: 'Attendance ↑',
+  pctDesc: 'Attendance ↓',
+  nameAsc: 'Name A–Z',
+  rollAsc: 'Roll #',
+};
+
+const filterControlStyle: React.CSSProperties = {
+  background: 'white', border: '1px solid #E2E8F0', borderRadius: '0.5rem',
+  padding: '0.35rem 0.6rem', fontSize: '0.8rem', fontWeight: 600,
+  color: '#334155', outline: 'none', cursor: 'pointer',
+};
 
 export const AttendanceStudents: React.FC = () => {
   const navigate = useNavigate();
@@ -23,8 +54,23 @@ export const AttendanceStudents: React.FC = () => {
   const [eligibility, setEligibility] = useState<EligibilityRow[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [notifyTarget, setNotifyTarget] = useState<NotificationRecipient | null>(null);
+
+  // Filter state
   const [query, setQuery] = useState('');
+  const [bucket, setBucket] = useState<Bucket>('all');
+  const [elig, setElig] = useState<Eligibility>('all');
+  const [subjectId, setSubjectId] = useState<string>('all');
+  const [sortKey, setSortKey] = useState<SortKey>('pctAsc');
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  const resetFilters = () => {
+    setQuery(''); setBucket('all'); setElig('all'); setSubjectId('all'); setSortKey('pctAsc');
+  };
+  const activeFilterCount =
+    (query.trim() ? 1 : 0) + (bucket !== 'all' ? 1 : 0) + (elig !== 'all' ? 1 : 0)
+    + (subjectId !== 'all' ? 1 : 0);
 
   useEffect(() => {
     if (!divisionId) { setStats([]); setStudents([]); setEligibility([]); return; }
@@ -67,15 +113,62 @@ export const AttendanceStudents: React.FC = () => {
     }).sort((a, b) => a.pct - b.pct);
   }, [stats, students, eligibilityById]);
 
+  /** Subject options derived from any student's breakdown (drives the Subject filter). */
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, { id: string; code: string; name: string }>();
+    for (const e of eligibility) {
+      for (const s of e.subjects) {
+        if (!map.has(s.subjectId)) map.set(s.subjectId, { id: s.subjectId, code: s.code, name: s.name });
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => a.code.localeCompare(b.code));
+  }, [eligibility]);
+
   const visible = useMemo(() => {
-    if (!query.trim()) return merged;
     const q = query.trim().toLowerCase();
-    return merged.filter(r =>
-      r.student.name.toLowerCase().includes(q)
-      || (r.student.rollNumber ?? '').toLowerCase().includes(q)
-      || r.student.email.toLowerCase().includes(q)
-    );
-  }, [merged, query]);
+    let rows = merged;
+
+    if (q) {
+      rows = rows.filter(r =>
+        r.student.name.toLowerCase().includes(q)
+        || (r.student.rollNumber ?? '').toLowerCase().includes(q)
+        || r.student.email.toLowerCase().includes(q)
+      );
+    }
+
+    if (bucket !== 'all') {
+      rows = rows.filter(r => {
+        if (bucket === 'noData') return r.total === 0;
+        if (r.total === 0) return false;
+        if (bucket === 'gte75')   return r.pct >= 75;
+        if (bucket === '60to75')  return r.pct >= 60 && r.pct < 75;
+        if (bucket === 'below60') return r.pct < 60;
+        return true;
+      });
+    }
+
+    if (elig !== 'all') {
+      rows = rows.filter(r => {
+        if (r.total === 0) return false;
+        return elig === 'eligible' ? r.eligible : !r.eligible;
+      });
+    }
+
+    if (subjectId !== 'all') {
+      rows = rows.filter(r => r.subjectBreakdown.some(s => s.subjectId === subjectId && !s.eligible));
+    }
+
+    const sorted = [...rows];
+    sorted.sort((a, b) => {
+      switch (sortKey) {
+        case 'pctAsc':  return a.pct - b.pct;
+        case 'pctDesc': return b.pct - a.pct;
+        case 'nameAsc': return a.student.name.localeCompare(b.student.name);
+        case 'rollAsc': return (a.student.rollNumber ?? '').localeCompare(b.student.rollNumber ?? '');
+      }
+    });
+    return sorted;
+  }, [merged, query, bucket, elig, subjectId, sortKey]);
 
   const toggleExpand = (studentId: string) => {
     setExpanded(prev => prev === studentId ? null : studentId);
@@ -100,26 +193,92 @@ export const AttendanceStudents: React.FC = () => {
         </>
       }
       pageActions={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', background: 'white', border: '1px solid #E2E8F0', borderRadius: '0.5rem', padding: '0.35rem 0.75rem' }}>
-          <Search size={14} color="#64748B" />
-          <input
-            type="text"
-            placeholder="Search name, roll, or email…"
-            value={query}
-            onChange={e => setQuery(e.target.value)}
-            style={{ border: 'none', outline: 'none', fontSize: '0.85rem', minWidth: 220 }}
-          />
-        </div>
+        <>
+          <span className="status-pill info" style={{ fontSize: '0.625rem' }}>
+            {visible.length} / {merged.length} students
+            {activeFilterCount > 0 && ` · ${activeFilterCount} filter${activeFilterCount > 1 ? 's' : ''}`}
+          </span>
+          <button
+            className="btn btn-secondary btn-sm"
+            disabled={!divisionId || exporting || visible.length === 0}
+            onClick={async () => {
+              if (!divisionId) return;
+              const code = divisions.find(d => d._id === divisionId)?.code ?? 'division';
+              const ids = visible.map(v => v.student._id);
+              const isFiltered = activeFilterCount > 0 && ids.length !== merged.length;
+              setExporting(true);
+              try { await downloadDivisionReportPdf(divisionId, code, isFiltered ? ids : undefined); }
+              catch (e) { setError(e instanceof ApiError ? e.message : 'PDF download failed'); }
+              finally { setExporting(false); }
+            }}
+          >
+            <FileDown size={14} /> {exporting ? 'Exporting…' : `Export PDF${activeFilterCount > 0 ? ` (${visible.length})` : ''}`}
+          </button>
+        </>
       }
     >
       {error && <div className="status-pill danger" style={{ marginBottom: '1rem' }}>{error}</div>}
 
       <div className="card">
-        <div className="card-header">
+        <div className="card-header" style={{ marginBottom: '0.85rem' }}>
           <h3>{visible.length} students</h3>
-          <span className="status-pill muted">
-            Click a row for subject breakdown
-          </span>
+          <span className="status-pill muted">Click a row for subject breakdown</span>
+        </div>
+
+        {/* Filter row */}
+        <div
+          style={{
+            display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '0.5rem',
+            padding: '0.75rem', background: '#F8FAFC', border: '1px solid #E2E8F0',
+            borderRadius: '0.5rem', marginBottom: '1rem',
+          }}
+        >
+          <div style={{ ...filterControlStyle, display: 'flex', alignItems: 'center', gap: '0.4rem', cursor: 'text', padding: '0.35rem 0.6rem' }}>
+            <Search size={14} color="#64748B" />
+            <input
+              type="text"
+              placeholder="Search name, roll, email…"
+              value={query}
+              onChange={e => setQuery(e.target.value)}
+              style={{ border: 'none', outline: 'none', fontSize: '0.8rem', minWidth: 200, background: 'transparent' }}
+            />
+          </div>
+
+          <select value={bucket} onChange={e => setBucket(e.target.value as Bucket)} style={filterControlStyle} aria-label="Attendance bucket">
+            {(Object.keys(BUCKET_LABEL) as Bucket[]).map(b => (
+              <option key={b} value={b}>Attendance: {BUCKET_LABEL[b]}</option>
+            ))}
+          </select>
+
+          <select value={elig} onChange={e => setElig(e.target.value as Eligibility)} style={filterControlStyle} aria-label="Eligibility">
+            {(Object.keys(ELIG_LABEL) as Eligibility[]).map(k => (
+              <option key={k} value={k}>Eligibility: {ELIG_LABEL[k]}</option>
+            ))}
+          </select>
+
+          <select value={subjectId} onChange={e => setSubjectId(e.target.value)} style={filterControlStyle} aria-label="Subject">
+            <option value="all">Subject: All</option>
+            {subjectOptions.map(s => (
+              <option key={s.id} value={s.id}>Ineligible in: {s.code}</option>
+            ))}
+          </select>
+
+          <select value={sortKey} onChange={e => setSortKey(e.target.value as SortKey)} style={filterControlStyle} aria-label="Sort">
+            {(Object.keys(SORT_LABEL) as SortKey[]).map(k => (
+              <option key={k} value={k}>Sort: {SORT_LABEL[k]}</option>
+            ))}
+          </select>
+
+          {activeFilterCount > 0 && (
+            <button
+              type="button"
+              onClick={resetFilters}
+              className="btn btn-secondary btn-sm"
+              style={{ marginLeft: 'auto' }}
+            >
+              <X size={12} /> Clear
+            </button>
+          )}
         </div>
 
         {loading ? (
@@ -148,6 +307,13 @@ export const AttendanceStudents: React.FC = () => {
                     <tr
                       onClick={() => toggleExpand(student._id)}
                       style={{ cursor: 'pointer' }}
+                      data-automation-row="true"
+                      data-row-student-id={student._id}
+                      data-row-name={student.name}
+                      data-row-roll={student.rollNumber ?? ''}
+                      data-row-email={student.email}
+                      data-row-pct={total === 0 ? '' : Math.round(pct).toString()}
+                      data-row-eligible={total === 0 ? 'unknown' : eligible ? 'true' : 'false'}
                     >
                       <td>
                         <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
@@ -183,12 +349,34 @@ export const AttendanceStudents: React.FC = () => {
                           </span>
                         )}
                       </td>
-                      <td className="right">
-                        <ChevronRight
-                          size={16}
-                          color="#94A3B8"
-                          style={{ transform: expanded === student._id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}
-                        />
+                      <td className="right" onClick={e => e.stopPropagation()}>
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                          <button
+                            className="btn btn-secondary btn-icon-only btn-sm"
+                            onClick={() => setNotifyTarget({
+                              _id: student._id,
+                              name: student.name,
+                              rollNumber: student.rollNumber,
+                              email: student.email,
+                              pct,
+                            })}
+                            title="Send notification"
+                            data-automation-id="row-send-notification"
+                          >
+                            <Bell size={12} color="var(--primary)" />
+                          </button>
+                          <button
+                            className="btn btn-secondary btn-icon-only btn-sm"
+                            onClick={() => toggleExpand(student._id)}
+                            title="Toggle details"
+                          >
+                            <ChevronRight
+                              size={12}
+                              color="#94A3B8"
+                              style={{ transform: expanded === student._id ? 'rotate(90deg)' : 'none', transition: 'transform 0.2s' }}
+                            />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                     {expanded === student._id && (
@@ -227,6 +415,12 @@ export const AttendanceStudents: React.FC = () => {
           </div>
         )}
       </div>
+
+      <SendNotificationModal
+        open={!!notifyTarget}
+        recipient={notifyTarget}
+        onClose={() => setNotifyTarget(null)}
+      />
     </AppLayout>
   );
 };

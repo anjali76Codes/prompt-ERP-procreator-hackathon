@@ -4,6 +4,8 @@ import { SignUp } from './pages/SignUp';
 import { Dashboard } from './pages/Dashboard';
 import { Admin } from './pages/Admin';
 import { Automation } from './pages/Automation';
+import { AutomationDetail } from './pages/AutomationDetail';
+import { ChatInterface } from './pages/ChatInterface';
 import { AttendanceOverview } from './pages/AttendanceOverview';
 import { AttendanceMark } from './pages/AttendanceMark';
 import { AttendanceValidate } from './pages/AttendanceValidate';
@@ -16,13 +18,32 @@ import { PendingApproval } from './pages/PendingApproval';
 import { AttendanceProvider } from './lib/AttendanceContext';
 import { AuthProvider } from './lib/auth/AuthContext';
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
+import { RecorderProvider } from './lib/automation/recorder/RecorderContext';
+import { RecorderOverlay } from './components/automation/recorder/RecorderOverlay';
+import { NotificationProvider } from './lib/notifications/NotificationContext';
+import { ToastContainer } from 'react-toastify';
+import 'react-toastify/dist/ReactToastify.css';
 import './dashboard.css';
 
 const App = () => {
   return (
     <BrowserRouter>
       <AuthProvider>
+        <NotificationProvider>
         <AttendanceProvider>
+          <RecorderProvider>
+            <RecorderOverlay />
+            <ToastContainer
+              position="top-right"
+              autoClose={3500}
+              hideProgressBar={false}
+              newestOnTop
+              closeOnClick
+              pauseOnFocusLoss
+              draggable
+              pauseOnHover
+              theme="light"
+            />
           <Routes>
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
 
@@ -41,8 +62,18 @@ const App = () => {
             <Route path="/admin" element={
               <ProtectedRoute roles={['admin']} requireActive><Admin /></ProtectedRoute>
             } />
+
+            {/* Conversational AI assistant — previously lived at /automation */}
+            <Route path="/chat-interface" element={
+              <ProtectedRoute requireActive><ChatInterface /></ProtectedRoute>
+            } />
+
+            {/* Deterministic record-and-replay automation system */}
             <Route path="/automation" element={
-              <ProtectedRoute requireActive><Automation /></ProtectedRoute>
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><Automation /></ProtectedRoute>
+            } />
+            <Route path="/automation/:id" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><AutomationDetail /></ProtectedRoute>
             } />
 
             {/* Attendance — teachers only, must be active */}
@@ -79,7 +110,9 @@ const App = () => {
 
             <Route path="*" element={<Placeholder title="Page Not Found" description="The link you followed doesn't match any route in the ERP." />} />
           </Routes>
+          </RecorderProvider>
         </AttendanceProvider>
+        </NotificationProvider>
       </AuthProvider>
     </BrowserRouter>
   );

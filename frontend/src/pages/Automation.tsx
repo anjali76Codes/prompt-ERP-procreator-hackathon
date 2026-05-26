@@ -1,117 +1,190 @@
-import React, { useEffect } from 'react';
-import { Cpu, Eye, EyeOff, FileText, Lock } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Cpu, Plus, Search } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
-import { ChatPanel } from '../components/automation/ChatPanel';
-import { WorkflowPipeline } from '../components/automation/WorkflowPipeline';
-import { TerminalLog } from '../components/automation/TerminalLog';
-import { SavedWorkflows } from '../components/automation/SavedWorkflows';
-import { useAutomationEngine, ACTIVE_MODEL, CONNECTED_CONTEXT } from '../lib/automation/engine';
-import { useSidebarState } from '../lib/useSidebarState';
-import s from '../components/automation/Automation.module.css';
+import { AutomationCard } from '../components/automation/recorder/AutomationCard';
+import { useAuth } from '../lib/auth/AuthContext';
+import { useRecorder } from '../lib/automation/recorder/RecorderContext';
+import * as api from '../lib/automation/recorder/api';
+import type { Automation as AutomationT } from '../lib/automation/recorder/types';
+import { ApiError } from '../lib/api';
+import { toast } from 'react-toastify';
+import s from '../components/automation/recorder/automation.module.css';
+
+type Filter = 'all' | 'mine' | 'shared';
 
 export const Automation: React.FC = () => {
-  const engine = useAutomationEngine();
-  const split = engine.workflow !== null;
-  const { setCollapsed } = useSidebarState();
+  const navigate = useNavigate();
+  const { user } = useAuth();
+  const recorder = useRecorder();
 
-  // Auto-collapse the sidebar the moment a workflow starts — gives the pipeline room.
-  useEffect(() => { if (split) setCollapsed(true); }, [split, setCollapsed]);
+  const [automations, setAutomations] = useState<AutomationT[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [filter, setFilter] = useState<Filter>('all');
+  const [query, setQuery] = useState('');
+
+  const userId = user?._id ?? '';
+
+  const refresh = async () => {
+    setLoading(true);
+    setError(null);
+    try { setAutomations(await api.listAutomations()); }
+    catch (e) { setError(e instanceof ApiError ? e.message : 'Failed to load automations'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { void refresh(); }, []);
+
+  const visible = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return automations.filter(a => {
+      if (filter === 'mine') {
+        const ownerId = typeof a.owner === 'string' ? a.owner : a.owner._id;
+        if (ownerId !== userId) return false;
+      }
+      if (filter === 'shared') {
+        if (!a.shared) return false;
+      }
+      if (q && !(a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q))) return false;
+      return true;
+    });
+  }, [automations, filter, query, userId]);
+
+  /* --------- actions --------- */
+
+  const handleCreateNew = async () => {
+    const name = window.prompt('Name your automation:', 'Mark TE-A attendance');
+    if (!name) return;
+    try {
+      const a = await api.createAutomation({ name });
+      toast.success(`Recording started — "${name}"`);
+      // Start recording immediately on the freshly created automation —
+      // the overlay is mounted at app root so the teacher can navigate
+      // anywhere in the ERP while it runs.
+      recorder.startRecording(a);
+      navigate('/attendance');
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : 'Failed to create automation';
+      setError(message);
+      toast.error(message);
+    }
+  };
+
+  const handleRun = async (a: AutomationT) => {
+    // Row-bound variables (filled per loop iteration from the row's data
+    // attributes) should NOT be prompted from the user — they're populated
+    // at run time. Strip them out before asking.
+    const rowBound = new Set<string>();
+    for (const step of a.steps) {
+      for (const b of step.rowBindings ?? []) rowBound.add(b.name);
+    }
+    const askable = a.variables.filter(v => !rowBound.has(v.name));
+    if (askable.length === 0) {
+      await recorder.startPlayback(a, {});
+      return;
+    }
+    // Quick variable prompt — full form lives on the detail page.
+    const collected: Record<string, string> = {};
+    for (const v of askable) {
+      const val = window.prompt(`${v.label ?? v.name}:`, v.defaultValue ?? '');
+      if (val === null) return;
+      collected[v.name] = val;
+    }
+    await recorder.startPlayback(a, collected);
+  };
+
+  const handleEdit = (a: AutomationT) => navigate(`/automation/${a._id}`);
+
+  const handleDelete = async (a: AutomationT) => {
+    if (!window.confirm(`Delete automation "${a.name}"?`)) return;
+    try {
+      await api.deleteAutomation(a._id);
+      toast.success(`Deleted "${a.name}"`);
+      await refresh();
+    } catch (e) {
+      const message = e instanceof ApiError ? e.message : 'Delete failed';
+      setError(message);
+      toast.error(message);
+    }
+  };
 
   return (
     <AppLayout
-      padded={false}
+      background="#F8FAFC"
       pageIcon={<Cpu size={18} />}
-      pageTitle="AI Workflow"
-      pageBreadcrumb="Automation Assistant"
+      pageTitle="Automation"
+      pageBreadcrumb="Record · Edit · Run"
       pageActions={
-        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: '#EFF6FF', padding: '0.3rem 0.75rem', borderRadius: '2rem', border: '1px solid #DBEAFE' }}>
-          <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10B981' }} className="pulse-dot" />
-          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.2px' }}>
-            SYSTEM ONLINE
-          </span>
-        </div>
+        <button className="btn btn-primary btn-sm" onClick={handleCreateNew}>
+          <Plus size={14} /> New Automation
+        </button>
       }
     >
-      <div className={s.page}>
-        <div className={s.workspace}>
-          {/* LEFT: chat */}
-          <div className={`${s.chatCol} ${split ? s.split : s.full}`}>
-            <ChatPanel
-              messages={engine.messages}
-              split={split}
-              suggestedPrompts={engine.suggestedPrompts}
-              onSend={engine.send}
-              onInsightAction={() => engine.highlightStudents()}
-            />
+      {error && <div className="status-pill danger" style={{ marginBottom: '1rem' }}>{error}</div>}
 
-            <div className={`${s.quickActions} ${split ? s.split : s.full}`}>
-              <button
-                className={s.quickActionBtn}
-                onClick={() => engine.send('Generate student analytical performance report in PDF')}
-              >
-                <FileText size={14} color="var(--primary)" /> Generate Report
-              </button>
-              <button
-                className={s.quickActionBtn}
-                onClick={() => engine.send('Securely send the drafted letters via institutional mail tunnels')}
-              >
-                <Lock size={14} color="var(--primary)" /> Secure Send
-              </button>
-            </div>
+      <div className={s.toolbar}>
+        <div className={s.toolbarSearch}>
+          <Search size={14} color="#64748B" />
+          <input
+            type="text"
+            placeholder="Search automations…"
+            value={query}
+            onChange={e => setQuery(e.target.value)}
+          />
+        </div>
 
-            <SavedWorkflows
-              templates={engine.templates}
-              split={split}
-              onRun={engine.runTemplate}
-            />
-          </div>
+        <div style={{ display: 'flex', gap: '0.3rem' }}>
+          {(['all', 'mine', 'shared'] as Filter[]).map(f => (
+            <button
+              key={f}
+              className={`btn btn-sm ${filter === f ? 'btn-primary' : 'btn-secondary'}`}
+              onClick={() => setFilter(f)}
+              style={{ textTransform: 'capitalize' }}
+            >
+              {f}
+            </button>
+          ))}
+        </div>
 
-          {/* RIGHT: workflow + logs */}
-          <div className={`${s.workflowCol} ${split ? s.visible : s.hidden}`}>
-            <div className={s.metaCard}>
-              <div className={s.metaGroup}>
-                <div>
-                  <div className={s.metaLabel}>Active Model</div>
-                  <div className={s.metaValue}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: ACTIVE_MODEL.online ? '#10B981' : '#94A3B8' }} />
-                    <span>{ACTIVE_MODEL.name}</span>
-                    <span style={{ fontSize: '0.625rem', fontWeight: 800, backgroundColor: '#EFF6FF', color: 'var(--primary)', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', letterSpacing: '0.5px' }}>
-                      {ACTIVE_MODEL.badge}
-                    </span>
-                  </div>
-                </div>
-                <div className={s.metaDivider}>
-                  <div className={s.metaLabel}>Connected Context</div>
-                  <div className={s.metaValue}>
-                    {CONNECTED_CONTEXT.primary}
-                    <span style={{ color: '#94A3B8', margin: '0 0.4rem' }}>•</span>
-                    <span style={{ color: 'var(--primary)' }}>{CONNECTED_CONTEXT.secondary}</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                className={`${s.logsToggle} ${engine.showLogs ? '' : s.off}`}
-                onClick={engine.toggleLogs}
-              >
-                {engine.showLogs ? <Eye size={13} /> : <EyeOff size={13} />}
-                LOGS: {engine.showLogs ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            {engine.workflow && (
-              <WorkflowPipeline
-                workflow={engine.workflow}
-                isPaused={engine.isPaused}
-                onTogglePause={engine.togglePause}
-                onDeploy={engine.deploy}
-              />
-            )}
-
-            <TerminalLog open={engine.showLogs} logs={engine.logs} />
-          </div>
+        <div style={{ marginLeft: 'auto', fontSize: '0.72rem', color: '#64748B', fontWeight: 600 }}>
+          {visible.length} of {automations.length}
         </div>
       </div>
+
+      {loading ? (
+        <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B' }}>Loading automations…</div>
+      ) : visible.length === 0 ? (
+        <div className={s.emptyState}>
+          <div className={s.emptyStateIcon}>
+            <Cpu size={28} color="var(--primary, #0047FF)" />
+          </div>
+          <div className={s.emptyStateTitle}>
+            {automations.length === 0 ? 'No automations yet' : 'No matches'}
+          </div>
+          <div className={s.emptyStateBody}>
+            Record repetitive tasks once, replay them on demand. Pair with a row-loop to fan out across many students.
+          </div>
+          <button className="btn btn-primary btn-sm" onClick={handleCreateNew}>
+            <Plus size={14} /> Create your first automation
+          </button>
+        </div>
+      ) : (
+        <div style={{
+          display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '1rem',
+        }}>
+          {visible.map(a => (
+            <AutomationCard
+              key={a._id}
+              automation={a}
+              currentUserId={userId}
+              onRun={handleRun}
+              onEdit={handleEdit}
+              onDelete={handleDelete}
+            />
+          ))}
+        </div>
+      )}
     </AppLayout>
   );
 };

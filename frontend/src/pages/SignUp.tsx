@@ -8,6 +8,7 @@ import { Checkbox } from '../components/ui/Checkbox';
 import { Card } from '../components/ui/Card';
 import { useAuth } from '../lib/auth/AuthContext';
 import { ApiError } from '../lib/api';
+import { toast } from 'react-toastify';
 import type { Year, RegisterPayload } from '../lib/auth/types';
 
 const YEARS: Year[] = ['FE', 'SE', 'TE', 'BE'];
@@ -74,17 +75,23 @@ export const SignUp: React.FC = () => {
           };
 
       const result = await register(payload);
+      toast.success(
+        result.user.role === 'teacher'
+          ? 'Account created — awaiting admin approval'
+          : `Welcome aboard, ${result.user.name.split(' ')[0]}!`,
+      );
       navigate(result.user.role === 'teacher' ? '/pending-approval' : '/dashboard', { replace: true });
     } catch (err) {
+      let message = 'Registration failed';
       if (err instanceof ApiError) {
         const details = err.details as Record<string, string[]> | undefined;
         const fieldMsgs = details
           ? Object.entries(details).map(([k, v]) => `${k}: ${v.join(', ')}`).join('  •  ')
           : '';
-        setError(fieldMsgs ? `${err.message} — ${fieldMsgs}` : err.message);
-      } else {
-        setError('Registration failed');
+        message = fieldMsgs ? `${err.message} — ${fieldMsgs}` : err.message;
       }
+      setError(message);
+      toast.error(message);
     } finally {
       setSubmitting(false);
     }
