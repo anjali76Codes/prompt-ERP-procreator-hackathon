@@ -1,0 +1,105 @@
+# --- Secrets ---------------------------------------------------------------
+.env
+.env.local
+.env.*.local
+*.pem
+*.key
+*.p12
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+
+# Build / dist
+build/
+dist/
+*.manifest
+*.spec
+develop-eggs/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+pip-wheel-metadata/
+MANIFEST
+
+# Test / coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+htmlcov/
+nosetests.xml
+coverage.xml
+*.cover
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+.pytype/
+.ruff_cache/
+
+# --- Virtual environments --------------------------------------------------
+.venv/
+venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# --- Package managers ------------------------------------------------------
+# uv keeps uv.lock checked in — only ignore the cache
+.uv_cache/
+pip-log.txt
+pip-delete-this-directory.txt
+
+# --- Tooling caches --------------------------------------------------------
+.cache/
+.pyright/
+.basedpyright/
+
+# --- Editors / OS ----------------------------------------------------------
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# --- Project artifacts -----------------------------------------------------
+logs/
+*.log
+runs/
+tmp/
+.tmp/
+data/
+storage/
+
+# Playwright / browser automation
+.playwright/
+playwright-report/
+test-results/
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Local sqlite / vector stores
+*.db
+*.sqlite
+*.sqlite3
+chroma/
+qdrant_data/
