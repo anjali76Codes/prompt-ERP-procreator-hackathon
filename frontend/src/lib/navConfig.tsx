@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, UserCheck, GraduationCap, Calendar, FolderOpen,
-  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen,
+  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen, ClipboardList,
 } from 'lucide-react';
 import type { Role } from './useRole';
 
@@ -24,12 +24,13 @@ export const studentNav: NavItem[] = [
 ];
 
 export const teacherNav: NavItem[] = [
-  { name: 'Dashboard',  icon: <LayoutDashboard size={20} />, path: '/dashboard' },
-  { name: 'Attendance', icon: <UserCheck size={20} />,       path: '/attendance' },
-  { name: 'Grades',     icon: <GraduationCap size={20} />,   path: '/grades' },
-  { name: 'Curriculum', icon: <Layers size={20} />,          path: '/curriculum' },
-  { name: 'Research',   icon: <Award size={20} />,           path: '/research' },
-  { name: 'Automation', icon: <Cpu size={20} />,             path: '/automation' },
+  { name: 'Dashboard',           icon: <LayoutDashboard size={20} />, path: '/dashboard' },
+  { name: 'Attendance',          icon: <UserCheck size={20} />,       path: '/attendance' },
+  { name: 'Grades',              icon: <GraduationCap size={20} />,   path: '/grades' },
+  { name: 'Assignments & Notes', icon: <ClipboardList size={20} />,   path: '/assignments' },
+  { name: 'Curriculum',          icon: <Layers size={20} />,          path: '/curriculum' },
+  { name: 'Research',            icon: <Award size={20} />,           path: '/research' },
+  { name: 'Automation',          icon: <Cpu size={20} />,             path: '/automation' },
 ];
 
 export const teacherTools: NavItem[] = [
