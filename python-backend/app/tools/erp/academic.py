@@ -13,6 +13,7 @@ from typing import Any
 from langchain_core.tools import tool
 
 from app.agents.run_context import current_run_context
+from app.tools.erp._util import erp_safe
 
 
 def _match(row: dict[str, Any], query: str) -> bool:
@@ -23,6 +24,7 @@ def _match(row: dict[str, Any], query: str) -> bool:
 
 
 @tool
+@erp_safe
 async def list_divisions(query: str = "") -> list[dict[str, Any]]:
     """List class divisions, optionally filtered by a name/code substring.
 
@@ -45,6 +47,7 @@ async def list_divisions(query: str = "") -> list[dict[str, Any]]:
 
 
 @tool
+@erp_safe
 async def list_subjects(query: str = "") -> list[dict[str, Any]]:
     """List subjects, optionally filtered by a name/code substring.
 

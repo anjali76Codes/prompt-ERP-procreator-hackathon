@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 
 from app.agents.run_context import current_run_context
 from app.core.logging import get_logger
+from app.tools.erp._util import erp_safe
 
 log = get_logger("tools.resources")
 
@@ -31,6 +32,7 @@ def _slim(resource: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool
+@erp_safe
 async def create_resource(
     kind: Literal["notes", "assignment"],
     title: str,
@@ -77,6 +79,7 @@ async def create_resource(
 
 
 @tool
+@erp_safe
 async def publish_resource(resource_id: str) -> dict[str, Any]:
     """Publish a draft notes/assignment so students can see it."""
     data = await current_run_context().erp().post(f"/resources/{resource_id}/publish")
@@ -85,6 +88,7 @@ async def publish_resource(resource_id: str) -> dict[str, Any]:
 
 
 @tool
+@erp_safe
 async def list_resources(
     kind: Optional[Literal["notes", "assignment"]] = None,
     status: Optional[Literal["draft", "published"]] = None,

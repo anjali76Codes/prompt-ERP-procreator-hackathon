@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from app.agents.run_context import current_run_context
+from app.tools.erp._util import erp_safe
 
 Status = Literal["present", "absent", "late", "excused"]
 
@@ -24,6 +25,7 @@ class AttendanceEntry(BaseModel):
 
 
 @tool
+@erp_safe
 async def list_lectures(
     division_id: Optional[str] = None,
     date: Optional[str] = None,
@@ -61,6 +63,7 @@ async def list_lectures(
 
 
 @tool
+@erp_safe
 async def get_lecture_roster(lecture_id: str) -> list[dict[str, Any]]:
     """Get the student roster for a lecture (the class enrolment), with each
     student's current attendance status if already marked. Returns rows of
@@ -83,6 +86,7 @@ async def get_lecture_roster(lecture_id: str) -> list[dict[str, Any]]:
 
 
 @tool
+@erp_safe
 async def mark_attendance(
     lecture_id: str, entries: list[AttendanceEntry]
 ) -> dict[str, Any]:
@@ -102,6 +106,7 @@ async def mark_attendance(
 
 
 @tool
+@erp_safe
 async def mark_attendance_for_all(
     lecture_id: str, status: Status = "present"
 ) -> dict[str, Any]:
@@ -123,12 +128,14 @@ async def mark_attendance_for_all(
 
 
 @tool
+@erp_safe
 async def division_attendance_stats(division_id: str) -> dict[str, Any]:
     """Get overall attendance statistics for a division."""
     return await current_run_context().erp().get(f"/divisions/{division_id}/attendance/stats")
 
 
 @tool
+@erp_safe
 async def student_attendance(
     student_id: Optional[str] = None, subject_id: Optional[str] = None
 ) -> dict[str, Any]:

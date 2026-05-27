@@ -23,9 +23,12 @@ export const ChatPanel: React.FC<Props> = ({
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
 
-  const addFiles = (list: FileList | null) => {
-    if (!list || list.length === 0) return;
-    setFiles(prev => [...prev, ...Array.from(list)]);
+  // NB: convert the FileList to an array *here*, synchronously. If we defer
+  // it into the setState updater, the input's `value=''` reset below empties
+  // the live FileList before the updater runs and we'd store zero files.
+  const addFiles = (picked: File[]) => {
+    if (picked.length === 0) return;
+    setFiles(prev => [...prev, ...picked]);
   };
   const removeFile = (idx: number) =>
     setFiles(prev => prev.filter((_, i) => i !== idx));
@@ -156,7 +159,7 @@ export const ChatPanel: React.FC<Props> = ({
           type="file"
           multiple
           hidden
-          onChange={e => { addFiles(e.target.files); e.target.value = ''; }}
+          onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }}
         />
         <form onSubmit={submit} className={s.inputBox}>
           <textarea

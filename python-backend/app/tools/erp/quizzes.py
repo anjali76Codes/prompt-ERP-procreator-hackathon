@@ -14,6 +14,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from app.agents.run_context import current_run_context
+from app.tools.erp._util import erp_safe
 
 
 class QuizOption(BaseModel):
@@ -44,6 +45,7 @@ def _slim(quiz: dict[str, Any]) -> dict[str, Any]:
 
 
 @tool
+@erp_safe
 async def create_quiz(
     title: str,
     division_id: str,
@@ -93,6 +95,7 @@ async def create_quiz(
 
 
 @tool
+@erp_safe
 async def publish_quiz(quiz_id: str) -> dict[str, Any]:
     """Publish a draft quiz so students can attempt it."""
     data = await current_run_context().erp().post(f"/quizzes/{quiz_id}/publish")
@@ -101,6 +104,7 @@ async def publish_quiz(quiz_id: str) -> dict[str, Any]:
 
 
 @tool
+@erp_safe
 async def list_quizzes(
     division_id: Optional[str] = None,
     subject_id: Optional[str] = None,
@@ -121,6 +125,7 @@ async def list_quizzes(
 
 
 @tool
+@erp_safe
 async def get_quiz(quiz_id: str) -> dict[str, Any]:
     """Fetch one quiz with its full questions and settings."""
     data = await current_run_context().erp().get(f"/quizzes/{quiz_id}")
@@ -128,6 +133,7 @@ async def get_quiz(quiz_id: str) -> dict[str, Any]:
 
 
 @tool
+@erp_safe
 async def quiz_metrics(quiz_id: str) -> dict[str, Any]:
     """Fetch attempt metrics for a quiz: totalAttempts, submitted, graded,
     avgScore, and a leaderboard."""
