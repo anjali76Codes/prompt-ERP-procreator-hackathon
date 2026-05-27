@@ -20,6 +20,11 @@ dependencies = [
     "structlog>=24.4.0",
     # AI agents — Google Gemini
     "google-genai>=0.3.0",
+    # AI orchestration — LangChain + LangGraph (agent loop, tool calling, memory)
+    "langchain>=0.3.7",
+    "langchain-core>=0.3.15",
+    "langgraph>=0.2.45",
+    "langchain-google-genai>=2.0.4",
     # MCP (Model Context Protocol) — server + client SDK
     "mcp>=1.0.0",
     # Browser automation (Playwright) — for "open my fee receipt" style flows

@@ -34,12 +34,15 @@ class Settings(BaseSettings):
     jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
 
     # --- Node backend ----------------------------------------------------
-    node_api_url: str = "http://localhost:5000/api"
+    # The Express backend listens on :3000 (see express-backend/.env).
+    node_api_url: str = "http://localhost:3000/api"
 
     # --- Google Gemini ---------------------------------------------------
     gemini_api_key: str = ""
     gemini_model: str = "gemini-2.0-flash"
     gemini_max_output_tokens: int = 4096
+    # Lower temperature → more deterministic tool-arg extraction.
+    gemini_temperature: float = 0.1
 
     # --- MCP -------------------------------------------------------------
     mcp_servers: str = ""

@@ -1,87 +1,56 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import React from 'react';
 import { Database, TrendingUp, Mail } from 'lucide-react';
 import type {
-  ChatMessage, ExecutionLog, LogLevel, Workflow, WorkflowStep,
+  ChatMessage, ExecutionLog, Workflow, WorkflowStep,
   WorkflowTemplate, ActiveModel, ConnectedContext,
 } from './types';
+import {
+  AgentApiError, sendChat, sendChatWithFiles, type AgentToolStep,
+} from './agentApi';
 
 /* =============================================================================
- *  Mock workflow engine.
- *  Designed so the contract (useAutomationEngine) can be reused unchanged when
- *  a real backend orchestrator (Claude / Gemini tool-use) is wired in.
+ *  Automation engine — wired to the Python LangGraph agent.
+ *
+ *  The user's prompt goes to POST /agents/chat (or /agents/chat/files when
+ *  files are attached). The agent calls ERP tools and returns { reply, steps }.
+ *  We render the reply in chat and turn the tool-call `steps` into the live
+ *  workflow pipeline + terminal logs.
  * ========================================================================= */
 
 const SUGGESTED_PROMPTS = [
-  'Analyze CS101 student performance',
-  'Draft warning letters for at-risk students',
-  'Generate attendance report for Section A',
+  'Create a 5-question quiz on binary trees for TE-A in Data Structures',
+  'Upload notes for Chapter 3 of Data Structures for TE-A',
+  'Mark everyone present in today’s DSA lecture for TE-A',
 ] as const;
 
 const SAVED_TEMPLATES: WorkflowTemplate[] = [
   {
-    id: 'tpl-attendance-report',
-    name: 'Weekly Attendance Report (Section A)',
-    description: 'Generates a section-level attendance roll-up with PDF export and parent emails to under-75% students.',
-    author: 'Prof. Adrian Miller',
-    tags: ['attendance', 'pdf', 'email'],
-    runCount: 18,
-    lastRunAt: Date.now() - 1000 * 60 * 60 * 24 * 2,
-    seedPrompt: 'Generate attendance report for Section A',
-  },
-  {
-    id: 'tpl-warning-letters',
-    name: 'Draft Warning Letters (At-Risk Students)',
-    description: 'Identifies students with grade drop > 15% and drafts personalised guardian letters in institutional tone.',
-    author: 'Prof. Adrian Miller',
-    tags: ['grades', 'risk', 'letter'],
-    runCount: 9,
-    lastRunAt: Date.now() - 1000 * 60 * 60 * 24 * 7,
-    seedPrompt: 'Draft warning letters for at-risk students',
-  },
-  {
     id: 'tpl-quiz-publish',
-    name: 'Publish Quiz with Deadline',
-    description: 'Validates chapter coverage, attaches solutions, publishes to class portal with a configurable deadline.',
-    author: 'Dr. Sarah Johnson',
-    tags: ['quiz', 'curriculum', 'browser'],
+    name: 'Create & Publish a Quiz',
+    description: 'Generates questions for a topic, creates the quiz for a division + subject, and publishes it.',
+    author: 'Prof. Adrian Miller',
+    tags: ['quiz', 'generate', 'publish'],
     runCount: 4,
-    seedPrompt: 'Create a quiz for Chapter 5 and publish it',
-  },
-];
-
-const PIPELINE_TEMPLATE: WorkflowStep[] = [
-  {
-    id: 'step-1',
-    kind: 'data_retrieval',
-    label: 'DATA RETRIEVAL',
-    description: 'Fetch student attendance and quiz grades for Section A-12.',
-    color: 'var(--primary)',
-    iconBg: '#EFF6FF',
-    detail: 'GET /api/v2/records?course=CS101&type=hybrid',
-    status: 'queued',
+    seedPrompt: 'Create and publish a 5-question quiz on sorting algorithms for TE-A in Data Structures',
   },
   {
-    id: 'step-2',
-    kind: 'analysis',
-    label: 'ANALYSIS',
-    description: 'Identifying students with >15% attendance drop and failing grades.',
-    color: '#10B981',
-    iconBg: '#ECFDF5',
-    tags: [
-      { text: 'HEURISTIC MODEL 4.0', borderColor: '#F59E0B' },
-      { text: 'REAL-TIME CROSS-REF', borderColor: 'var(--primary)' },
-    ],
-    status: 'queued',
+    id: 'tpl-upload-notes',
+    name: 'Upload Lecture Notes',
+    description: 'Creates a notes resource for a division + subject (attach a file in the chat to upload it).',
+    author: 'Dr. Sarah Johnson',
+    tags: ['notes', 'resources'],
+    runCount: 11,
+    seedPrompt: 'Upload notes for Chapter 3 of Data Structures for TE-A',
   },
   {
-    id: 'step-3',
-    kind: 'communication',
-    label: 'COMMUNICATION',
-    description: 'Generate and send personalized performance reports to student guardians.',
-    color: '#F97316',
-    iconBg: '#FFF7ED',
-    status: 'queued',
+    id: 'tpl-mark-attendance',
+    name: 'Mark Attendance',
+    description: 'Finds today’s lecture and marks the whole class present in one step.',
+    author: 'Prof. Adrian Miller',
+    tags: ['attendance'],
+    runCount: 18,
+    seedPrompt: 'Mark all students present in today’s DSA lecture for TE-A',
   },
 ];
 
@@ -93,37 +62,74 @@ export const STEP_ICON: Record<string, React.ReactNode> = {
   human_approval:  React.createElement(TrendingUp, { size: 18 }),
 };
 
-const LOG_POOL = [
-  'PARSING context_nodes for CS101',
-  'RESOLVING dependency: attendance_ledger',
-  'CALCULATING risk_index for student_cohort',
-  'SYNAPSE handshake... OK',
-  'OPTIMIZING execution_path for Step_3',
-  'EVALUATING heuristics threshold... 15%',
-  'SECURE tunnel established for report_delivery',
-  'COMPILING grade_diff across Quiz 1-3',
-  'INDEXING student_profiles... 128 records',
-];
+export const ACTIVE_MODEL: ActiveModel = { name: 'Gemini 2.0 Flash', badge: 'LANGGRAPH', online: true };
+export const CONNECTED_CONTEXT: ConnectedContext = { primary: 'ERP Backend', secondary: 'Quizzes · Notes · Attendance' };
 
-const SEED_LOGS: ExecutionLog[] = [
-  { id: 'l-1', ts: '[19:24:28]', level: 'info',    message: '→ REFRESHING local_context_cache... done' },
-  { id: 'l-2', ts: '[19:25:28]', level: 'info',    message: '→ REFRESHING local_context_cache... done' },
-  { id: 'l-3', ts: '[19:26:29]', level: 'info',    message: '→ PUSHING data_fragment_A8 to worker_node_4' },
-  { id: 'l-4', ts: '[19:27:28]', level: 'success', message: '→ VALIDATING security_handshake... SECURE' },
-  { id: 'l-5', ts: '[19:27:31]', level: 'info',    message: '→ PUSHING data_fragment_A8 to worker_node_4' },
-];
+/* ---- tool-call -> pipeline / log mapping -------------------------------- */
+
+// Read-only tools render as "data retrieval"; everything else is an action.
+const READ_TOOLS = new Set([
+  'list_divisions', 'list_subjects', 'list_resources', 'list_quizzes',
+  'get_quiz', 'quiz_metrics', 'list_lectures', 'get_lecture_roster',
+  'division_attendance_stats', 'student_attendance',
+]);
+
+const kindOf = (tool: string): WorkflowStep['kind'] =>
+  READ_TOOLS.has(tool) ? 'data_retrieval' : 'communication';
+
+const prettyTool = (tool: string): string =>
+  tool.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+
+const fmtVal = (v: unknown): string => {
+  if (Array.isArray(v)) return `${v.length} item(s)`;
+  if (v && typeof v === 'object') return '{…}';
+  return String(v);
+};
+
+const summarizeArgs = (args: Record<string, unknown>): string =>
+  Object.entries(args)
+    .slice(0, 3)
+    .map(([k, v]) => `${k}: ${fmtVal(v)}`)
+    .join(' · ') || 'no arguments';
 
 const ts = () => `[${new Date().toTimeString().split(' ')[0]}]`;
 const uid = () => Math.random().toString(36).slice(2, 10);
+const newSessionId = () =>
+  typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : uid();
 
-const classify = (msg: string): LogLevel =>
-  msg.includes('SECURE') ? 'success'
-  : msg.includes('REFRESHING') ? 'info'
-  : msg.includes('PUSHING') ? 'info'
-  : 'warn';
+const buildWorkflow = (seed: string, steps: AgentToolStep[]): Workflow | null => {
+  if (steps.length === 0) return null;
+  return {
+    id: uid(),
+    name: seed.length > 60 ? seed.slice(0, 57) + '…' : seed,
+    description: seed,
+    status: 'completed',
+    createdAt: Date.now(),
+    steps: steps.map((st, i) => ({
+      id: `step-${i}`,
+      kind: kindOf(st.tool),
+      label: prettyTool(st.tool),
+      description: summarizeArgs(st.args),
+      status: 'completed' as const,
+    })),
+  };
+};
 
-export const ACTIVE_MODEL: ActiveModel = { name: 'Gemini 1.5 Pro', badge: 'RESEARCH', online: true };
-export const CONNECTED_CONTEXT: ConnectedContext = { primary: 'S1-2024 Database', secondary: 'CS101 Records' };
+const buildLogs = (steps: AgentToolStep[]): ExecutionLog[] => {
+  const out: ExecutionLog[] = steps.map(st => ({
+    id: uid(),
+    ts: ts(),
+    level: 'info' as const,
+    message: `→ TOOL ${st.tool}(${summarizeArgs(st.args)})`,
+  }));
+  out.push({
+    id: uid(),
+    ts: ts(),
+    level: 'success',
+    message: `→ Completed ${steps.length} tool call(s)`,
+  });
+  return out;
+};
 
 export interface AutomationEngineState {
   messages: ChatMessage[];
@@ -136,7 +142,7 @@ export interface AutomationEngineState {
 }
 
 export interface AutomationEngineActions {
-  send: (text: string) => void;
+  send: (text: string, files?: File[]) => void;
   togglePause: () => void;
   toggleLogs: () => void;
   deploy: () => void;
@@ -150,95 +156,49 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isPaused, setPaused] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
-  const tickRef = useRef<number | null>(null);
-  const stepTimers = useRef<number[]>([]);
+  // One conversation/session for the lifetime of this mounted page.
+  const sessionId = useRef<string>(newSessionId());
 
-  /* ---- terminal log ticker -------------------------------------------- */
-  useEffect(() => {
-    if (!workflow || !showLogs || isPaused) {
-      if (tickRef.current) window.clearInterval(tickRef.current);
-      return;
-    }
-    if (logs.length === 0) setLogs(SEED_LOGS);
-    tickRef.current = window.setInterval(() => {
-      const msg = LOG_POOL[Math.floor(Math.random() * LOG_POOL.length)];
-      setLogs(prev => [...prev.slice(-14), {
-        id: uid(),
-        ts: ts(),
-        level: classify(msg),
-        message: `→ ${msg}`,
-      }]);
-    }, 4000);
-    return () => { if (tickRef.current) window.clearInterval(tickRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workflow?.id, showLogs, isPaused]);
-
-  /* ---- pipeline progression ------------------------------------------ */
-  const startWorkflow = useCallback((seed: string) => {
-    const steps = PIPELINE_TEMPLATE.map(s => ({ ...s, status: 'queued' as const }));
-    const wf: Workflow = {
-      id: uid(),
-      name: seed.length > 60 ? seed.slice(0, 57) + '…' : seed,
-      description: seed,
-      status: 'running',
-      steps,
-      createdAt: Date.now(),
-    };
-    setWorkflow(wf);
-
-    // Clear any pending timers from a previous workflow.
-    stepTimers.current.forEach(window.clearTimeout);
-    stepTimers.current = [];
-
-    const advance = (index: number, status: 'running' | 'completed') => {
-      setWorkflow(prev => {
-        if (!prev) return prev;
-        const next = prev.steps.map((s, i) => {
-          if (i < index) return { ...s, status: 'completed' as const };
-          if (i === index) return { ...s, status };
-          return s;
-        });
-        const allDone = next.every(s => s.status === 'completed');
-        return { ...prev, steps: next, status: allDone ? 'completed' : 'running' };
-      });
-    };
-
-    advance(0, 'running');
-    stepTimers.current.push(window.setTimeout(() => advance(1, 'running'), 3500));
-    stepTimers.current.push(window.setTimeout(() => advance(2, 'running'), 8500));
-    stepTimers.current.push(window.setTimeout(() => advance(2, 'completed'), 12000));
-  }, []);
-
-  /* ---- send chat message --------------------------------------------- */
-  const send = useCallback((rawText: string) => {
+  const send = useCallback((rawText: string, files?: File[]) => {
     const text = rawText.trim();
-    if (!text) return;
+    const hasFiles = !!files && files.length > 0;
+    if (!text && !hasFiles) return;
 
-    setMessages(prev => [...prev, { id: uid(), role: 'user', text, createdAt: Date.now() }]);
-    if (!workflow) startWorkflow(text);
+    const userText = text || `Uploading ${files!.length} file(s)`;
+    setMessages(prev => [...prev, { id: uid(), role: 'user', text: userText, createdAt: Date.now() }]);
 
     const loadingId = uid();
-    window.setTimeout(() => {
-      setMessages(prev => [...prev, {
-        id: loadingId, role: 'ai', isLoading: true, createdAt: Date.now(),
-        text: 'Analyzing performance metrics & mapping workflow...',
-      }]);
-    }, 450);
+    setMessages(prev => [...prev, {
+      id: loadingId, role: 'ai', isLoading: true, createdAt: Date.now(),
+      text: 'Working on it — detecting intent and calling the right tools…',
+    }]);
 
-    window.setTimeout(() => {
-      setMessages(prev => prev.filter(m => m.id !== loadingId).concat({
-        id: uid(),
-        role: 'ai',
-        createdAt: Date.now(),
-        text: "Understood. I've initiated a 3-step workflow. I'm currently cross-referencing Quiz 1-3 grades with physical attendance records. I've identified 14 students who fall below the current threshold. Would you like me to use the standard template for the letters or a personalized tone?",
-        insight: {
-          title: 'REAL-TIME INSIGHT',
-          body: 'Found 3 students with 100% attendance but <40% grades. This suggests possible engagement issues despite presence.',
-          buttonText: 'HIGHLIGHT THESE STUDENTS',
-        },
-      }));
-    }, 2400);
-  }, [workflow, startWorkflow]);
+    const run = hasFiles
+      ? sendChatWithFiles(userText, sessionId.current, files!)
+      : sendChat(userText, sessionId.current);
+
+    run
+      .then(resp => {
+        setMessages(prev => prev.filter(m => m.id !== loadingId).concat({
+          id: uid(), role: 'ai', text: resp.reply, createdAt: Date.now(),
+        }));
+        const wf = buildWorkflow(userText, resp.steps);
+        if (wf) {
+          setWorkflow(wf);
+          setLogs(buildLogs(resp.steps));
+        }
+      })
+      .catch((err: unknown) => {
+        const message =
+          err instanceof AgentApiError ? err.message
+          : err instanceof Error ? err.message
+          : 'Could not reach the AI backend.';
+        setMessages(prev => prev.filter(m => m.id !== loadingId).concat({
+          id: uid(), role: 'ai', createdAt: Date.now(),
+          text: `⚠️ ${message}`,
+        }));
+      });
+  }, []);
 
   const togglePause = useCallback(() => setPaused(p => !p), []);
   const toggleLogs = useCallback(() => setShowLogs(s => !s), []);
@@ -247,22 +207,18 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
     if (!workflow) return;
     setLogs(prev => [...prev, {
       id: uid(), ts: ts(), level: 'success',
-      message: `→ DEPLOY "${workflow.name}" → ERP scheduler accepted (job ${uid().toUpperCase()})`,
+      message: `→ SAVED "${workflow.name}" as a reusable workflow`,
     }]);
   }, [workflow]);
 
   const runTemplate = useCallback((id: string) => {
     const tpl = SAVED_TEMPLATES.find(t => t.id === id);
-    if (!tpl) return;
-    send(tpl.seedPrompt);
+    if (tpl) send(tpl.seedPrompt);
   }, [send]);
 
-  const highlightStudents = useCallback(() => {
-    setLogs(prev => [...prev, {
-      id: uid(), ts: ts(), level: 'warn',
-      message: '→ HIGHLIGHT: Aarav Sharma, Priya Nair, Rohan Das (100% attendance, <40% grades)',
-    }]);
-  }, []);
+  // Kept for the ChatPanel insight-action contract; the live agent doesn't
+  // emit insight cards, so this is a no-op.
+  const highlightStudents = useCallback(() => {}, []);
 
   return {
     messages, workflow, logs, isPaused, showLogs,
