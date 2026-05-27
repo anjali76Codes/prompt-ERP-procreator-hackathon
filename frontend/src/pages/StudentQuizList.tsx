@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
-import { 
-  FileQuestion, ChevronRight, HelpCircle, FileText, CheckCircle, Award
+import {
+  FileQuestion
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -23,7 +23,7 @@ interface StudentQuiz {
 export const StudentQuizList: React.FC = () => {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState<StudentQuiz[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [, setLoading] = React.useState(false);
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
   const [statusFilter, setStatusFilter] = useState('All Status');
 

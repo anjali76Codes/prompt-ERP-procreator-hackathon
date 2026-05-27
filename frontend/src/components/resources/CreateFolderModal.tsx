@@ -30,7 +30,7 @@ const labelText: React.CSSProperties = {
 };
 
 export const CreateFolderModal: React.FC<Props> = ({ open, onClose, onCreated }) => {
-  const { divisionId, subjectId, divisions, subjects, createFolder } = useResources();
+  const { divisionId, subjectId, divisions, subjects, createItem } = useResources();
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
@@ -67,11 +67,13 @@ export const CreateFolderModal: React.FC<Props> = ({ open, onClose, onCreated })
     setBusy(true);
     setError(null);
     try {
-      const folder = await createFolder({
+      const folder = await createItem({
+        kind: 'folder',
         division: divisionId,
         subject: subjectId,
         title: title.trim(),
         description: description.trim(),
+        files: [],
       });
       onCreated(folder._id);
       onClose();

@@ -367,7 +367,6 @@ export const ResourceUpload: React.FC = () => {
           )}
           {step === 2 && (
             <FileUploadStep
-              kind={kind}
               form={form}
               errors={errors}
               uploadedAttachments={draft?.attachments ?? []}
@@ -411,7 +410,8 @@ export const ResourceUpload: React.FC = () => {
 /*  Wizard frame (3-dot stepper + max-width centered content)                  */
 /* -------------------------------------------------------------------------- */
 
-const STEPS_BY_KIND: Record<ResourceKind, { idx: Step; label: string }[]> = {
+type ResourceUploadKind = Exclude<ResourceKind, 'folder'>;
+const STEPS_BY_KIND: Record<ResourceUploadKind, { idx: Step; label: string }[]> = {
   assignment: [
     { idx: 1, label: 'Details' },
     { idx: 2, label: 'Files' },
@@ -426,7 +426,7 @@ const STEPS_BY_KIND: Record<ResourceKind, { idx: Step; label: string }[]> = {
 const WizardLayout: React.FC<{ step: Step; kind: ResourceKind; children: React.ReactNode }> = ({
   step, kind, children,
 }) => {
-  const steps = STEPS_BY_KIND[kind];
+  const steps = STEPS_BY_KIND[kind as ResourceUploadKind];
   return (
     <div style={{ maxWidth: 880, margin: '0 auto' }}>
       {/* Stepper */}
@@ -549,7 +549,6 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
 /* -------------------------------------------------------------------------- */
 
 interface FileUploadStepProps {
-  kind: ResourceKind;
   form: FormState;
   errors: Record<string, string>;
   uploadedAttachments: ResourceAttachment[];
@@ -566,7 +565,7 @@ interface FileUploadStepProps {
 }
 
 const FileUploadStep: React.FC<FileUploadStepProps> = ({
-  kind, form, errors, uploadedAttachments, existingFolders, update,
+  form, errors, uploadedAttachments, existingFolders, update,
   onFiles, removePending, removeUploaded, onNext, onBack, onSaveDraft, busy, isLast,
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
@@ -863,8 +862,8 @@ const SettingsStep: React.FC<SettingsStepProps> = ({
         <input
           type="text"
           style={fieldStyle(false)}
-          value={form.unit}
-          onChange={e => update('unit', e.target.value)}
+          value={form.folder}
+          onChange={e => update('folder', e.target.value)}
           placeholder="e.g. Unit 4 · Greedy Algorithms"
         />
       </Field>

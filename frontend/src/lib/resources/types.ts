@@ -3,7 +3,7 @@
  * backend's `/api/resources` payloads.
  */
 
-export type ResourceKind = 'assignment' | 'notes';
+export type ResourceKind = 'assignment' | 'notes' | 'folder';
 export type ResourceStatus = 'draft' | 'published';
 export type CloudinaryResourceType = 'image' | 'video' | 'raw' | 'auto';
 

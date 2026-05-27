@@ -36,9 +36,7 @@ export const StudentQuizPlay: React.FC = () => {
   const [descriptiveAnswers, setDescriptiveAnswers] = useState<
     Record<number, string>
   >({});
-
   const [flagged, setFlagged] = useState<Record<number, boolean>>({});
-
   const [attemptId, setAttemptId] = useState<string | null>(null);
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
@@ -489,13 +487,9 @@ export const StudentQuizPlay: React.FC = () => {
             </button>
 
             <button
-              onClick={() =>
-                toggleFlag(
-                  activeQuestion.id
-                )
-              }
+              onClick={() => toggleFlag(activeQuestion.id)}
             >
-              🚩 Flag
+              {flagged[activeQuestion.id] ? '🚩 Flagged' : '🚩 Flag'}
             </button>
 
             <button

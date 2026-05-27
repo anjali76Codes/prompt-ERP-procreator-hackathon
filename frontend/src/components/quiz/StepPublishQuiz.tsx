@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Send, FileText, Globe, Check, Users, Clock, AlertTriangle, ShieldCheck } from 'lucide-react';
+import { ArrowLeft, Send, FileText, Users, Clock } from 'lucide-react';
 
 interface StepPublishQuizProps {
   quizTitle: string;
@@ -48,7 +48,7 @@ export const StepPublishQuiz: React.FC<StepPublishQuizProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TARGET AUDIENCE</span>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginTop: '0.25rem' }}>CS {semester} {division}</div>
+            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginTop: '0.25rem' }}>CS {semester} {division} · {branch}</div>
           </div>
           <div>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TOTAL MARKS</span>

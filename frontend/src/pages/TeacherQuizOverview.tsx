@@ -24,7 +24,7 @@ interface Quiz {
 export const TeacherQuizOverview: React.FC = () => {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [, setLoading] = React.useState(false);
   React.useEffect(() => {
     let mounted = true;
     const load = async () => {
