@@ -135,9 +135,9 @@ export const Resources: React.FC = () => {
         <div
           style={{
             display: 'grid',
-            gridTemplateColumns: 'minmax(280px, 1fr) minmax(420px, 1.6fr)',
-            gap: '1.25rem',
-            marginBottom: '1.25rem',
+            gridTemplateColumns: 'minmax(320px, 1fr) minmax(520px, 1.8fr)',
+            gap: '1.5rem',
+            marginBottom: '1.5rem',
           }}
         >
           <DivisionSelector
@@ -160,10 +160,10 @@ export const Resources: React.FC = () => {
         </div>
 
         {/* ------------------ Row 2 — Action cards ------------------------------- */}
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.25rem', marginBottom: '1.75rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: '1.1fr 0.9fr', gap: '1.5rem', marginBottom: '1.75rem' }}>
           <ActionCard
             tone="blue"
-            decorIcon={<FileCheck2 size={92} />}
+            decorIcon={<FileCheck2 size={96} />}
             title="Manage Assignments"
             description={ready && selectedDivision && selectedSubject
               ? `Create new assignments, set deadlines, and evaluate student submissions for ${selectedDivision.code} ${selectedSubject.code}.`
@@ -182,7 +182,7 @@ export const Resources: React.FC = () => {
 
           <ActionCard
             tone="lavender"
-            decorIcon={<BookOpen size={92} />}
+            decorIcon={<BookOpen size={96} />}
             title="Course Notes"
             description={ready && selectedDivision && selectedSubject
               ? `Distribute lecture slides, reading materials, and supplementary PDFs for ${selectedSubject.name}.`
@@ -208,24 +208,6 @@ export const Resources: React.FC = () => {
           items={currentItems}
         />
 
-        {/* FAB */}
-        <button
-          onClick={goUpload('assignment')}
-          disabled={!ready}
-          aria-label="Quick upload"
-          title={ready ? 'Quick upload' : 'Pick a division and subject first'}
-          style={{
-            position: 'fixed', right: '2rem', bottom: '2rem',
-            width: 52, height: 52, borderRadius: '50%',
-            background: ready ? 'var(--primary)' : '#94A3B8',
-            color: 'white', border: 'none', cursor: ready ? 'pointer' : 'not-allowed',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 8px 16px rgba(15, 23, 42, 0.15)',
-            zIndex: 30,
-          }}
-        >
-          <Plus size={22} />
-        </button>
       </div>
     </AppLayout>
   );
@@ -245,29 +227,24 @@ interface DivisionSelectorProps {
 const DivisionSelector: React.FC<DivisionSelectorProps> = ({
   divisions, loading, selectedId, onSelect,
 }) => (
-  <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-      <div
-        style={{
-          width: 40, height: 40, borderRadius: 'var(--radius-md)',
-          background: '#EEF2FF', color: 'var(--primary)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-        }}
-      >
-        <ClipboardList size={18} />
+  <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 380 }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
+      <div>
+        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+          Academic Division
+        </div>
+        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+          Select Division
+        </h2>
       </div>
       <button
         onClick={() => onSelect(null)}
         className="alert-row-cta"
-        style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px' }}
+        style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.55px' }}
       >
         SELECT DIVISION
       </button>
     </div>
-
-    <h2 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
-      Academic Division
-    </h2>
 
     {loading ? (
       <div style={{ padding: '1.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.85rem' }}>
@@ -333,45 +310,43 @@ interface SubjectSelectorProps {
 const SubjectSelector: React.FC<SubjectSelectorProps> = ({
   subjects, totalSubjects, divisionPicked, loading, selectedId, query, onQueryChange, onSelect,
 }) => (
-  <div className="card" style={{ padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+  <div className="card" style={{ padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', minHeight: 380 }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '0.75rem' }}>
-      <div
-        style={{
-          width: 40, height: 40, borderRadius: 'var(--radius-md)',
-          background: '#FFE4E6', color: '#E11D48',
-          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}
-      >
-        <BookOpen size={18} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+          Subject Selection
+        </div>
+        <h2 style={{ margin: 0, fontSize: '1.15rem', fontWeight: 800, color: '#0F172A' }}>
+          Pick a Subject
+        </h2>
       </div>
-
-      <div
-        style={{
-          flex: 1, display: 'flex', alignItems: 'center', gap: '0.5rem',
-          padding: '0.4rem 0.6rem', border: '1px solid #E2E8F0',
-          borderRadius: 'var(--radius-md)', background: '#F8FAFC',
-        }}
-      >
-        <Search size={13} color="#94A3B8" />
-        <input
-          value={query}
-          onChange={e => onQueryChange(e.target.value)}
-          placeholder="Filter subjects..."
-          disabled={!divisionPicked}
-          style={{
-            flex: 1, border: 'none', outline: 'none', background: 'transparent',
-            fontSize: '0.8rem', fontFamily: 'inherit',
-          }}
-        />
-      </div>
-
       <button
         onClick={() => onSelect(null)}
         className="alert-row-cta"
-        style={{ fontSize: '0.68rem', fontWeight: 800, letterSpacing: '0.6px' }}
+        style={{ fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.55px' }}
       >
         SELECT SUBJECT
       </button>
+    </div>
+
+    <div
+      style={{
+        display: 'flex', alignItems: 'center', gap: '0.75rem',
+        padding: '0.75rem 1rem', border: '1px solid #E2E8F0',
+        borderRadius: 'var(--radius-md)', background: '#F8FAFC',
+      }}
+    >
+      <Search size={16} color="#94A3B8" />
+      <input
+        value={query}
+        onChange={e => onQueryChange(e.target.value)}
+        placeholder="Filter subjects..."
+        disabled={!divisionPicked}
+        style={{
+          flex: 1, border: 'none', outline: 'none', background: 'transparent',
+          fontSize: '0.92rem', fontFamily: 'inherit', color: '#0F172A', minWidth: 0,
+        }}
+      />
     </div>
 
     {!divisionPicked ? (
@@ -494,14 +469,14 @@ const ActionCard: React.FC<ActionCardProps> = ({
   return (
     <div
       className="card"
-      style={{ padding: '1.5rem', position: 'relative', overflow: 'hidden', minHeight: 270 }}
+      style={{ padding: '1.75rem', position: 'relative', overflow: 'hidden', minHeight: 280, display: 'flex', flexDirection: 'column', justifyContent: 'space-between' }}
     >
       {/* Decorative faded icon */}
       <div
         aria-hidden
         style={{
-          position: 'absolute', right: -10, top: '0.75rem',
-          color: '#E2E8F0', opacity: 0.6, pointerEvents: 'none',
+          position: 'absolute', right: -8, top: 10,
+          color: '#E2E8F0', opacity: 0.55, pointerEvents: 'none',
         }}
       >
         {decorIcon}
@@ -589,12 +564,17 @@ const statusPill = (status: Resource['status']) => {
 };
 
 const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items }) => (
-  <div>
-    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '0.85rem' }}>
-      <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
-        Recent Activity{divisionLabel ? ` in ${divisionLabel}` : ''}
-      </h3>
-      <button className="alert-row-cta" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.3rem' }}>
+  <div className="card" style={{ padding: '1.5rem' }}>
+    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
+      <div>
+        <div style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.6px', textTransform: 'uppercase', marginBottom: '0.35rem' }}>
+          Recent Activity
+        </div>
+        <h3 style={{ margin: 0, fontSize: '1.1rem', fontWeight: 800, color: '#0F172A' }}>
+          {divisionLabel ? `Recent Activity in ${divisionLabel}` : 'Recent Activity'}
+        </h3>
+      </div>
+      <button className="alert-row-cta" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
         View Full History <ArrowRight size={12} />
       </button>
     </div>

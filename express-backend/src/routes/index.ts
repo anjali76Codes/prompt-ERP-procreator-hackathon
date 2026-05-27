@@ -9,6 +9,7 @@ import resourceRoutes from './resource.routes';
 import submissionRoutes from './submission.routes';
 import automationRoutes from './automation.routes';
 import notificationRoutes from './notification.routes';
+import quizRoutes from './quiz.routes';
 
 const router = Router();
 
@@ -27,6 +28,7 @@ router.use('/', lectureRoutes);
 router.use('/', attendanceRoutes);
 router.use('/', resourceRoutes);
 router.use('/', submissionRoutes);
+router.use('/', quizRoutes);
 
 router.use('/', automationRoutes);
 router.use('/', notificationRoutes);

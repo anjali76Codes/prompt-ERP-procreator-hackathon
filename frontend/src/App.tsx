@@ -22,6 +22,12 @@ import { ResourceUpload } from './pages/ResourceUpload';
 import { ResourcesList } from './pages/ResourcesList';
 import { ReviewSubmissions } from './pages/ReviewSubmissions';
 import { StudentResources } from './pages/StudentResources';
+import { QuizCreate } from './pages/QuizCreate';
+import { TeacherQuizOverview } from './pages/TeacherQuizOverview';
+import { StudentQuizList } from './pages/StudentQuizList';
+import { StudentQuizDetails } from './pages/StudentQuizDetails';
+import { StudentQuizPlay } from './pages/StudentQuizPlay';
+import { StudentQuizResult } from './pages/StudentQuizResult';
 import { AuthProvider } from './lib/auth/AuthContext';
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
 import { RecorderProvider } from './lib/automation/recorder/RecorderContext';
@@ -130,6 +136,25 @@ const App = () => {
             } />
             <Route path="/assignments/notes" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="notes" /></ProtectedRoute>
+            } />
+            
+            <Route path="/quiz/create" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><QuizCreate /></ProtectedRoute>
+            } />
+            <Route path="/quizzes" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><TeacherQuizOverview /></ProtectedRoute>
+            } />
+            <Route path="/student/quizzes" element={
+              <ProtectedRoute roles={['student']} requireActive><StudentQuizList /></ProtectedRoute>
+            } />
+            <Route path="/quiz/take/:id/details" element={
+              <ProtectedRoute roles={['student']} requireActive><StudentQuizDetails /></ProtectedRoute>
+            } />
+            <Route path="/quiz/take/:id/play" element={
+              <ProtectedRoute roles={['student']} requireActive><StudentQuizPlay /></ProtectedRoute>
+            } />
+            <Route path="/quiz/result/:id" element={
+              <ProtectedRoute roles={['student']} requireActive><StudentQuizResult /></ProtectedRoute>
             } />
 
             <Route path="*" element={<Placeholder title="Page Not Found" description="The link you followed doesn't match any route in the ERP." />} />

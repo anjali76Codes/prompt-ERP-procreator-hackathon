@@ -1,7 +1,7 @@
 import React from 'react';
 import {
   LayoutDashboard, UserCheck, GraduationCap, Calendar, FolderOpen,
-  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen, ClipboardList, MessageSquare,
+  CreditCard, TrendingUp, Users, Cpu, Layers, Award, BookOpen, ClipboardList, MessageSquare, Plus,
 } from 'lucide-react';
 import type { Role } from './useRole';
 
@@ -14,6 +14,7 @@ export interface NavItem {
 export const studentNav: NavItem[] = [
   { name: 'Dashboard',      icon: <LayoutDashboard size={20} />, path: '/dashboard' },
   { name: 'Attendance',     icon: <UserCheck size={20} />,       path: '/attendance' },
+  { name: 'Quizzes',        icon: <ClipboardList size={20} />,   path: '/student/quizzes' },
   { name: 'Grades',         icon: <GraduationCap size={20} />,   path: '/grades' },
   { name: 'Schedule',       icon: <Calendar size={20} />,        path: '/schedule' },
   { name: 'Resources',      icon: <FolderOpen size={20} />,      path: '/resources' },
@@ -26,8 +27,9 @@ export const studentNav: NavItem[] = [
 export const teacherNav: NavItem[] = [
   { name: 'Dashboard',           icon: <LayoutDashboard size={20} />, path: '/dashboard' },
   { name: 'Attendance',          icon: <UserCheck size={20} />,       path: '/attendance' },
+  { name: 'Quizzes',             icon: <ClipboardList size={20} />,   path: '/quizzes' },
   { name: 'Grades',              icon: <GraduationCap size={20} />,   path: '/grades' },
-  { name: 'Assignments & Notes', icon: <ClipboardList size={20} />,   path: '/assignments' },
+  { name: 'Assignments & Notes', icon: <FolderOpen size={20} />,      path: '/assignments' },
   { name: 'Curriculum',          icon: <Layers size={20} />,          path: '/curriculum' },
   { name: 'Research',            icon: <Award size={20} />,           path: '/research' },
   { name: 'Chat Interface',      icon: <MessageSquare size={20} />,   path: '/chat-interface' },
@@ -37,6 +39,7 @@ export const teacherNav: NavItem[] = [
 export const teacherTools: NavItem[] = [
   { name: 'Schedule', icon: <Calendar size={20} />, path: '/schedule' },
   { name: 'Homework', icon: <BookOpen size={20} />, path: '/homework' },
+  { name: 'Create Quiz', icon: <Plus size={20} />, path: '/quiz/create' },
 ];
 
 export const navForRole = (role: Role): NavItem[] =>
