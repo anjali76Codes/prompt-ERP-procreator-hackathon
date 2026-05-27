@@ -57,7 +57,7 @@ export const StepStudentPreview: React.FC<StepStudentPreviewProps> = ({
           
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #F1F5F9', paddingBottom: '1rem' }}>
             <div>
-              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>{quizTitle || 'Untitled Quiz'}</h3>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>{quizTitle || 'Student Preview'}</h3>
               <div style={{ fontSize: '0.75rem', color: '#64748B', fontWeight: 600, marginTop: '0.25rem' }}>
                 Question {(previewQIndex + 1)} of {questions.length}
               </div>

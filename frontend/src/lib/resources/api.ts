@@ -6,6 +6,7 @@ interface ListFilter {
   status?: ResourceStatus;
   divisionId?: string;
   subjectId?: string;
+  parentId?: string;
   mine?: boolean;
 }
 

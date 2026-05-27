@@ -43,7 +43,7 @@ export const StudentQuizDetails: React.FC = () => {
           const startRes = await api.startAttempt(id);
 
           currentAttempt = startRes.attempt;
-          attemptId = currentAttempt._id || currentAttempt.id;
+          attemptId = currentAttempt?._id || currentAttempt?.id;
         } else {
           // Fetch existing attempt
           const attemptRes = await api.getAttempt(attemptId);
