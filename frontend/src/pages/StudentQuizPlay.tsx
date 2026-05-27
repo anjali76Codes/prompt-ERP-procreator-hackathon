@@ -15,13 +15,17 @@ import {
 
 import { toast } from 'react-toastify';
 
+interface LiveOption {
+  id: string;   // backend option _id
+  text: string;
+}
+
 interface LiveQuestion {
-  id: number;
+  qid: string;  // backend question _id
   text: string;
   type: 'MCQ' | 'Descriptive';
-  options: string[];
-  marks: number;
-  difficulty: 'Easy' | 'Med' | 'Hard';
+  options: LiveOption[];
+  points: number;
 }
 
 export const StudentQuizPlay: React.FC = () => {
@@ -29,15 +33,18 @@ export const StudentQuizPlay: React.FC = () => {
   const location = useLocation();
   const { id } = useParams<{ id: string }>();
 
+  const [quizTitle, setQuizTitle] = useState('Quiz');
   const [questions, setQuestions] = useState<LiveQuestion[]>([]);
   const [currentIdx, setCurrentIdx] = useState(0);
 
-  const [answers, setAnswers] = useState<Record<number, number>>({});
-  const [descriptiveAnswers, setDescriptiveAnswers] = useState<
-    Record<number, string>
-  >({});
-  const [flagged, setFlagged] = useState<Record<number, boolean>>({});
+  // Keyed by backend question _id.
+  const [answers, setAnswers] = useState<Record<string, string>>({}); // qid -> selected optionId
+  const [descriptiveAnswers, setDescriptiveAnswers] = useState<Record<string, string>>({});
+
+  const [flagged, setFlagged] = useState<Record<string, boolean>>({});
+
   const [attemptId, setAttemptId] = useState<string | null>(null);
+  const [startedAtMs, setStartedAtMs] = useState<number>(Date.now());
 
   const [timeLeft, setTimeLeft] = useState<number>(0);
 
@@ -55,75 +62,46 @@ export const StudentQuizPlay: React.FC = () => {
 
         // Fetch quiz
         const qRes = await api.getQuiz(id);
-        const q = qRes.quiz;
+        const q: any = qRes.quiz;
 
-        const mapped: LiveQuestion[] = (q.questions || []).map(
-          (qq: any, idx: number) => ({
-            id: idx + 1,
-            text: qq.text,
-            type: qq.type === 'MCQ' ? 'MCQ' : 'Descriptive',
-            options: qq.options || [],
-            marks: qq.marks || 0,
-            difficulty: qq.difficulty || 'Easy'
-          })
-        );
+        const mapped: LiveQuestion[] = (q.questions || []).map((qq: any) => ({
+          qid: qq._id,
+          text: qq.text,
+          type: qq.type === 'single' || qq.type === 'multiple' ? 'MCQ' : 'Descriptive',
+          options: (qq.options || []).map((o: any) => ({ id: o._id, text: o.text })),
+          points: qq.points || 0,
+        }));
 
         if (!mounted) return;
 
+        setQuizTitle(q.title || 'Quiz');
         setQuestions(mapped);
 
-        // Check existing attempt
+        const limitSeconds = q.settings?.timeLimitMinutes ? q.settings.timeLimitMinutes * 60 : 0;
+
+        // Resume an existing attempt if one was passed, otherwise start a fresh one.
         const params = new URLSearchParams(location.search);
         const existingAttemptId = params.get('attemptId');
 
+        let attempt: any;
         if (existingAttemptId) {
           const aRes = await api.getAttempt(existingAttemptId);
-          const attempt = aRes.attempt;
-
-          setAttemptId(existingAttemptId);
-
-          const now = Date.now();
-
-          const endsAt = attempt.endsAt
-            ? new Date(attempt.endsAt).getTime()
-            : q.durationSeconds
-            ? now + q.durationSeconds * 1000
-            : null;
-
-          if (endsAt) {
-            setTimeLeft(
-              Math.max(
-                0,
-                Math.round((endsAt - now) / 1000)
-              )
-            );
-          }
+          attempt = aRes.attempt;
         } else {
-          // Start new attempt
           const startRes = await api.startAttempt(id);
-          const attempt = startRes.attempt;
+          attempt = startRes.attempt;
+        }
 
-          const newAttemptId =
-            attempt._id || attempt.id || null;
+        if (!mounted) return;
 
-          setAttemptId(newAttemptId);
+        setAttemptId(attempt._id || attempt.id || null);
 
-          const now = Date.now();
+        const startMs = attempt.startedAt ? new Date(attempt.startedAt).getTime() : Date.now();
+        setStartedAtMs(startMs);
 
-          const endsAt = attempt.endsAt
-            ? new Date(attempt.endsAt).getTime()
-            : q.durationSeconds
-            ? now + q.durationSeconds * 1000
-            : null;
-
-          if (endsAt) {
-            setTimeLeft(
-              Math.max(
-                0,
-                Math.round((endsAt - now) / 1000)
-              )
-            );
-          }
+        if (limitSeconds) {
+          const elapsed = Math.floor((Date.now() - startMs) / 1000);
+          setTimeLeft(Math.max(0, limitSeconds - elapsed));
         }
       } catch (err) {
         console.error('Failed to load quiz', err);
@@ -175,12 +153,31 @@ export const StudentQuizPlay: React.FC = () => {
   };
 
   /*
+    BUILD SUBMIT PAYLOAD (matches the backend submitAttempt schema)
+  */
+  const buildPayload = () => {
+    const answersList: { questionId: string; selectedOptionIds?: string[]; textAnswer?: string }[] = [];
+    for (const q of questions) {
+      if (q.type === 'MCQ') {
+        const sel = answers[q.qid];
+        if (sel) answersList.push({ questionId: q.qid, selectedOptionIds: [sel] });
+      } else {
+        const txt = descriptiveAnswers[q.qid];
+        if (txt && txt.trim() !== '') answersList.push({ questionId: q.qid, textAnswer: txt });
+      }
+    }
+    return {
+      quizId: id,
+      durationSeconds: Math.max(0, Math.round((Date.now() - startedAtMs) / 1000)),
+      answers: answersList,
+    };
+  };
+
+  /*
     AUTO SUBMIT
   */
   const handleAutoSubmit = async () => {
-    toast.warn(
-      'Time is up! Submitting your answers automatically.'
-    );
+    toast.warn('Time is up! Submitting your answers automatically.');
 
     if (!attemptId) {
       navigate('/quizzes');
@@ -189,25 +186,9 @@ export const StudentQuizPlay: React.FC = () => {
 
     try {
       const api = await import('../lib/quiz/api');
-
-      const payload = {
-        attemptId,
-        quizId: id,
-        answers: Object.keys(answers).map(k => ({
-          questionIndex: Number(k),
-          answer: answers[Number(k)]
-        })),
-        descriptive: Object.keys(
-          descriptiveAnswers
-        ).map(k => ({
-          questionIndex: Number(k),
-          text: descriptiveAnswers[Number(k)]
-        }))
-      };
-
-      await api.submitAttempt(payload);
-
-      navigate('/quizzes');
+      const res = await api.submitAttempt(buildPayload());
+      const resAttempt = res.attempt as any;
+      navigate(`/quiz/result/${resAttempt._id || resAttempt.id}`);
     } catch (err) {
       console.error('Auto submit failed', err);
       navigate('/quizzes');
@@ -223,49 +204,26 @@ export const StudentQuizPlay: React.FC = () => {
       return;
     }
 
-    const confirmed = window.confirm(
-      'Are you sure you want to submit the quiz?'
-    );
-
+    const confirmed = window.confirm('Are you sure you want to submit the quiz?');
     if (!confirmed) return;
 
     try {
       const api = await import('../lib/quiz/api');
-
-      const payload = {
-        attemptId,
-        quizId: id,
-        answers: Object.keys(answers).map(k => ({
-          questionIndex: Number(k),
-          answer: answers[Number(k)]
-        })),
-        descriptive: Object.keys(
-          descriptiveAnswers
-        ).map(k => ({
-          questionIndex: Number(k),
-          text: descriptiveAnswers[Number(k)]
-        }))
-      };
-
-      const res = await api.submitAttempt(payload);
+      const res = await api.submitAttempt(buildPayload());
+      const resAttempt = res.attempt as any;
 
       toast.success('Quiz submitted successfully!');
-
-      navigate(
-        `/quiz/result/${
-          res.attempt._id || res.attempt.id
-        }`
-      );
-    } catch (err) {
+      navigate(`/quiz/result/${resAttempt._id || resAttempt.id}`);
+    } catch (err: any) {
       console.error('Submit failed', err);
-      toast.error('Submit failed. Please try again.');
+      toast.error(err?.message || 'Submit failed. Please try again.');
     }
   };
 
   /*
     FLAG QUESTION
   */
-  const toggleFlag = (qId: number) => {
+  const toggleFlag = (qId: string) => {
     setFlagged(prev => ({
       ...prev,
       [qId]: !prev[qId]
@@ -301,7 +259,7 @@ export const StudentQuizPlay: React.FC = () => {
   return (
     <AppLayout
       pageIcon={<FileQuestion size={18} />}
-      pageTitle="Midterm Quiz"
+      pageTitle={quizTitle}
       pageBreadcrumb="Evaluation Tools"
       background="#F3F4F6"
     >
@@ -368,7 +326,7 @@ export const StudentQuizPlay: React.FC = () => {
                   color: '#64748B'
                 }}
               >
-                Marks: {activeQuestion.marks}
+                Marks: {activeQuestion.points}
               </div>
             </div>
 
@@ -395,15 +353,13 @@ export const StudentQuizPlay: React.FC = () => {
                 }}
               >
                 {activeQuestion.options.map(
-                  (opt, oIdx) => {
+                  (opt) => {
                     const isSelected =
-                      answers[
-                        activeQuestion.id
-                      ] === oIdx;
+                      answers[activeQuestion.qid] === opt.id;
 
                     return (
                       <label
-                        key={oIdx}
+                        key={opt.id}
                         style={{
                           display: 'flex',
                           alignItems: 'center',
@@ -427,13 +383,12 @@ export const StudentQuizPlay: React.FC = () => {
                           onChange={() =>
                             setAnswers({
                               ...answers,
-                              [activeQuestion.id]:
-                                oIdx
+                              [activeQuestion.qid]: opt.id
                             })
                           }
                         />
 
-                        {opt}
+                        {opt.text}
                       </label>
                     );
                   }
@@ -443,13 +398,13 @@ export const StudentQuizPlay: React.FC = () => {
               <textarea
                 value={
                   descriptiveAnswers[
-                    activeQuestion.id
+                    activeQuestion.qid
                   ] || ''
                 }
                 onChange={e =>
                   setDescriptiveAnswers({
                     ...descriptiveAnswers,
-                    [activeQuestion.id]:
+                    [activeQuestion.qid]:
                       e.target.value
                   })
                 }
@@ -487,9 +442,13 @@ export const StudentQuizPlay: React.FC = () => {
             </button>
 
             <button
-              onClick={() => toggleFlag(activeQuestion.id)}
+              onClick={() =>
+                toggleFlag(
+                  activeQuestion.qid
+                )
+              }
             >
-              {flagged[activeQuestion.id] ? '🚩 Flagged' : '🚩 Flag'}
+              {flagged[activeQuestion.qid] ? '🚩 Flagged' : '🚩 Flag'}
             </button>
 
             <button

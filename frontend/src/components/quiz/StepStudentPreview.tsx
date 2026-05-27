@@ -62,15 +62,17 @@ export const StepStudentPreview: React.FC<StepStudentPreviewProps> = ({
                 Question {(previewQIndex + 1)} of {questions.length}
               </div>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#FEE2E2', border: '1px solid #FCA5A5', color: '#EF4444', padding: '0.45rem 1rem', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 800 }}>
-              ⏰ 19:36
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', backgroundColor: '#EFF6FF', border: '1px solid #BFDBFE', color: 'var(--primary)', padding: '0.45rem 1rem', borderRadius: '0.5rem', fontSize: '0.85rem', fontWeight: 800 }}>
+              👁 Preview
             </div>
           </div>
 
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <span style={{ alignSelf: 'flex-start', backgroundColor: '#F1F5F9', color: '#475569', fontSize: '0.7rem', fontWeight: 800, padding: '0.2rem 0.55rem', borderRadius: '0.25rem' }}>
-              Object Oriented Programming
-            </span>
+            {questions[previewQIndex]?.topics?.[0] && (
+              <span style={{ alignSelf: 'flex-start', backgroundColor: '#F1F5F9', color: '#475569', fontSize: '0.7rem', fontWeight: 800, padding: '0.2rem 0.55rem', borderRadius: '0.25rem' }}>
+                {questions[previewQIndex].topics[0]}
+              </span>
+            )}
             <h2 style={{ margin: 0, fontSize: '1.25rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.4 }}>
               {questions[previewQIndex]?.text}
             </h2>

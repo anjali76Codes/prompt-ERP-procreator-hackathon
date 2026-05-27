@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
-import { 
+import {
   FileQuestion, Plus, Filter, LayoutGrid, List, Eye, Trash2, EyeOff, Copy, BarChart2
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
+import { toast } from 'react-toastify';
 
 interface Quiz {
   id: string;
@@ -21,62 +22,86 @@ interface Quiz {
   scheduledTime?: string;
 }
 
+const mapQuiz = (q: any): Quiz => ({
+  id: q._id || q.id,
+  title: q.title,
+  subject: q.subject?.name || q.subject || q.subjectRef?.name || '',
+  chapter: q.chapter || (q.questions?.[0]?.topics?.[0] || ''),
+  division: q.division?.name || q.division?.code || (Array.isArray(q.divisionRefs) ? q.divisionRefs.map((d: any) => d.name || d).join(', ') : q.division) || '',
+  status: q.status ? (q.status.charAt(0).toUpperCase() + q.status.slice(1)) : 'Draft',
+  questions: q.questions?.length || 0,
+  marks: q.totalMarks || q.questions?.reduce((s: number, qq: any) => s + (qq.points || 0), 0) || 0,
+  duration: q.settings?.timeLimitMinutes ? `${q.settings.timeLimitMinutes}m` : (q.durationSeconds ? `${Math.round(q.durationSeconds / 60)}m` : '—'),
+  submissions: q.stats?.submissions || 0,
+  totalStudents: q.stats?.eligible || 0,
+  avgMarks: q.stats?.avgMarks,
+});
+
 export const TeacherQuizOverview: React.FC = () => {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState<Quiz[]>([]);
-  const [, setLoading] = React.useState(false);
-  React.useEffect(() => {
-    let mounted = true;
-    const load = async () => {
-      try {
-        setLoading(true);
-        const res = await (await import('../lib/quiz/api')).listQuizzes();
-        const items = (res?.quizzes || []).map((q: any) => ({
-          id: q._id || q.id,
-          title: q.title,
-          subject: q.subject?.name || q.subject || q.subjectRef?.name || '',
-          chapter: q.chapter || (q.questions?.[0]?.topics?.[0] || ''),
-          division: (q.divisionRefs || q.division) ? (Array.isArray(q.divisionRefs) ? q.divisionRefs.map((d: any)=>d.name || d).join(', ') : q.division) : '',
-          status: q.status ? (q.status.charAt(0).toUpperCase() + q.status.slice(1)) : 'Draft',
-          questions: q.questions?.length || 0,
-          marks: q.totalMarks || q.questions?.reduce((s: number, qq: any)=>s + (qq.marks||0), 0) || 0,
-          duration: q.durationSeconds ? `${Math.round(q.durationSeconds/60)}m` : (q.duration || '—'),
-          submissions: q.stats?.submissions || 0,
-          totalStudents: q.stats?.eligible || 0,
-          avgMarks: q.stats?.avgMarks
-        }));
-        if (mounted) setQuizzes(items);
-      } catch (err) {
-        console.error('Failed loading quizzes', err);
-      } finally { setLoading(false); }
-    };
-    load();
-    return () => { mounted = false; };
+  const [loading, setLoading] = React.useState(false);
+
+  const reload = React.useCallback(async () => {
+    try {
+      setLoading(true);
+      const res = await (await import('../lib/quiz/api')).listQuizzes();
+      setQuizzes((res?.quizzes || []).map(mapQuiz));
+    } catch (err) {
+      console.error('Failed loading quizzes', err);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  React.useEffect(() => { reload(); }, [reload]);
+
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
   const [branchFilter, setBranchFilter] = useState('All Branches');
-  const [semesterFilter, setSemesterFilter] = useState('Sem 4');
-  const [divisionFilter, setDivisionFilter] = useState('Div A');
-  const [subjectFilter, setSubjectFilter] = useState('Java OOP');
+  const [semesterFilter, setSemesterFilter] = useState('All Semesters');
+  const [divisionFilter, setDivisionFilter] = useState('All Divisions');
+  const [subjectFilter, setSubjectFilter] = useState('All Subjects');
   const [chapterFilter, setChapterFilter] = useState('All Chapters');
-  const [statusFilter, setStatusFilter] = useState('Published');
+  const [statusFilter, setStatusFilter] = useState('All Statuses');
 
-  const handleDeleteQuiz = (id: string) => {
-    if (window.confirm('Are you sure you want to delete this quiz?')) {
-      setQuizzes(quizzes.filter(q => q.id !== id));
+  const handleDeleteQuiz = async (id: string) => {
+    if (!window.confirm('Are you sure you want to delete this quiz?')) return;
+    try {
+      await (await import('../lib/quiz/api')).deleteQuiz(id);
+      toast.success('Quiz deleted');
+      setQuizzes(prev => prev.filter(q => q.id !== id));
+    } catch (err: any) {
+      console.error('Delete failed', err);
+      toast.error(err?.message || 'Failed to delete quiz');
     }
   };
 
-  const handleDuplicateQuiz = (quiz: Quiz) => {
-    const duplicated: Quiz = {
-      ...quiz,
-      id: Date.now().toString(),
-      title: `${quiz.title} (Copy)`,
-      status: 'Draft',
-      submissions: 0,
-      avgMarks: undefined
-    };
-    setQuizzes([duplicated, ...quizzes]);
+  const handleDuplicateQuiz = async (quiz: Quiz) => {
+    try {
+      const api = await import('../lib/quiz/api');
+      // Pull the full quiz so we can recreate it with all its questions.
+      const full = (await api.getQuiz(quiz.id)) as any;
+      const src = full.quiz;
+      const payload = {
+        title: `${src.title} (Copy)`,
+        description: src.description,
+        division: src.division?._id || src.division,
+        subject: src.subject?._id || src.subject,
+        settings: src.settings || {},
+        questions: (src.questions || []).map((qq: any) => ({
+          text: qq.text,
+          type: qq.type,
+          points: qq.points,
+          options: (qq.options || []).map((o: any) => ({ text: o.text, isCorrect: !!o.isCorrect })),
+        })),
+      };
+      await api.createQuiz(payload);
+      toast.success('Quiz duplicated as a draft');
+      reload();
+    } catch (err: any) {
+      console.error('Duplicate failed', err);
+      toast.error(err?.message || 'Failed to duplicate quiz');
+    }
   };
 
   return (
@@ -109,16 +134,26 @@ export const TeacherQuizOverview: React.FC = () => {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '2rem' }}>
         
-        {/* Metric Cards Banner */}
+        {/* Metric Cards Banner — derived from real quiz data */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem' }}>
-          {[
-            { label: 'Total Quizzes', val: '24', change: '+3 this month', color: 'var(--primary)', bg: '#EFF6FF' },
-            { label: 'Active', val: '8', change: 'Live sessions', color: '#10B981', bg: '#EFFDF5' },
-            { label: 'Scheduled', val: '4', change: 'Starting soon', color: '#F59E0B', bg: '#FEFBF0' },
-            { label: 'Avg. Score', val: '78%', change: '5% increase', color: '#8B5CF6', bg: '#F5F3FF' },
-            { label: 'Pending', val: '12', change: 'Needs attention', color: '#EF4444', bg: '#FEF2F2' },
-            { label: 'Submissions', val: '450', change: 'Across all subjects', color: '#0D8ABC', bg: '#F0F9FF' }
-          ].map((card, i) => (
+          {(() => {
+            const published = quizzes.filter(q => q.status === 'Published');
+            const drafts = quizzes.filter(q => q.status === 'Draft');
+            const totalQuestions = quizzes.reduce((s, q) => s + q.questions, 0);
+            const totalSubmissions = quizzes.reduce((s, q) => s + q.submissions, 0);
+            const scored = quizzes.filter(q => typeof q.avgMarks === 'number');
+            const avg = scored.length
+              ? Math.round(scored.reduce((s, q) => s + (q.avgMarks || 0), 0) / scored.length)
+              : null;
+            return [
+              { label: 'Total Quizzes', val: String(quizzes.length), change: 'All quizzes', color: 'var(--primary)', bg: '#EFF6FF' },
+              { label: 'Published', val: String(published.length), change: 'Live for students', color: '#10B981', bg: '#EFFDF5' },
+              { label: 'Drafts', val: String(drafts.length), change: 'Not yet published', color: '#F59E0B', bg: '#FEFBF0' },
+              { label: 'Avg. Score', val: avg != null ? `${avg}` : '—', change: 'Across graded', color: '#8B5CF6', bg: '#F5F3FF' },
+              { label: 'Questions', val: String(totalQuestions), change: 'Total authored', color: '#EF4444', bg: '#FEF2F2' },
+              { label: 'Submissions', val: String(totalSubmissions), change: 'Across all quizzes', color: '#0D8ABC', bg: '#F0F9FF' }
+            ];
+          })().map((card, i) => (
             <div key={i} style={{ backgroundColor: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span style={{ fontSize: '0.725rem', fontWeight: 700, color: '#64748B' }}>{card.label}</span>
@@ -177,9 +212,20 @@ export const TeacherQuizOverview: React.FC = () => {
           </div>
         </div>
 
+        {loading && (
+          <div style={{ padding: '2rem', textAlign: 'center', fontWeight: 700, color: '#64748B' }}>Loading quizzes…</div>
+        )}
+        {!loading && quizzes.length === 0 && (
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B', fontWeight: 600, backgroundColor: 'white', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-lg)' }}>
+            No quizzes yet. Click <strong>“Create New Quiz”</strong> to build your first one.
+          </div>
+        )}
+
         {/* Quiz list card loop */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-          {quizzes.map(quiz => (
+          {quizzes
+            .filter(quiz => statusFilter.startsWith('All') || quiz.status === statusFilter)
+            .map(quiz => (
             <div key={quiz.id} style={{ backgroundColor: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>

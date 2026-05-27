@@ -19,8 +19,8 @@ export const StepPublishQuiz: React.FC<StepPublishQuizProps> = ({
   branch, semester, division, onBack, onSaveDraft, onPublish
 }) => {
   const [publishTime, setPublishTime] = useState('now'); // 'now' or 'later'
-  const [deadlineDate, setDeadlineDate] = useState('2023-11-20');
-  const [deadlineTime, setDeadlineTime] = useState('14:00');
+  const [deadlineDate, setDeadlineDate] = useState('');
+  const [deadlineTime, setDeadlineTime] = useState('');
   
   const [notifyEmail, setNotifyEmail] = useState(true);
   const [sendReminders, setSendReminders] = useState(true);
@@ -48,7 +48,7 @@ export const StepPublishQuiz: React.FC<StepPublishQuizProps> = ({
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem' }}>
           <div>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TARGET AUDIENCE</span>
-            <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginTop: '0.25rem' }}>CS {semester} {division} · {branch}</div>
+              <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#1E293B', marginTop: '0.25rem' }}>{[branch, semester, division].filter(Boolean).join(' · ') || division || '—'}</div>
           </div>
           <div>
             <span style={{ fontSize: '0.65rem', fontWeight: 700, color: '#94A3B8', textTransform: 'uppercase', letterSpacing: '0.5px' }}>TOTAL MARKS</span>
@@ -67,12 +67,6 @@ export const StepPublishQuiz: React.FC<StepPublishQuizProps> = ({
           </div>
         </div>
 
-        <div style={{ backgroundColor: '#F8FAFC', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-md)', padding: '1rem' }}>
-          <span style={{ fontSize: '0.7rem', fontWeight: 800, color: '#475569', display: 'block', marginBottom: '0.5rem' }}>Attached Resources</span>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', backgroundColor: 'white', padding: '0.5rem', borderRadius: '0.25rem', border: '1px solid #CBD5E1', fontSize: '0.75rem', fontWeight: 700, color: 'var(--primary)' }}>
-            📄 oop_references.pdf
-          </div>
-        </div>
       </div>
 
       {/* Right Column: Delivery Settings */}
@@ -89,9 +83,8 @@ export const StepPublishQuiz: React.FC<StepPublishQuizProps> = ({
           </div>
           <div>
             <h4 style={{ margin: 0, fontSize: '0.85rem', fontWeight: 800, color: '#1E293B' }}>Audience</h4>
-            <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.775rem', color: '#64748B', fontWeight: 600 }}>CS, Sem 3, Division A (64 Students)</p>
+            <p style={{ margin: '0.15rem 0 0 0', fontSize: '0.775rem', color: '#64748B', fontWeight: 600 }}>{[branch, semester, division].filter(Boolean).join(', ') || 'Selected division'}</p>
           </div>
-          <button style={{ marginLeft: 'auto', border: 'none', background: 'none', color: 'var(--primary)', fontWeight: 800, fontSize: '0.75rem', cursor: 'pointer' }}>Edit toggle ✏</button>
         </div>
 
         {/* Publishing Time */}

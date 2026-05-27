@@ -1,8 +1,6 @@
 import React, { useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
-import {
-  FileQuestion
-} from 'lucide-react';
+import { FileQuestion } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
 interface StudentQuiz {
@@ -23,7 +21,7 @@ interface StudentQuiz {
 export const StudentQuizList: React.FC = () => {
   const navigate = useNavigate();
   const [quizzes, setQuizzes] = useState<StudentQuiz[]>([]);
-  const [, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(false);
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
   const [statusFilter, setStatusFilter] = useState('All Status');
 
@@ -39,7 +37,7 @@ export const StudentQuizList: React.FC = () => {
           subject: q.subject?.name || q.subject || '',
           teacher: q.teacher?.name || q.teacher || (q.createdBy?.name || ''),
           questions: q.questions?.length || 0,
-          marks: q.totalMarks || q.questions?.reduce((s: number, qq: any)=>s + (qq.marks||0), 0) || 0,
+          marks: q.totalMarks || q.questions?.reduce((s: number, qq: any)=>s + (qq.points||0), 0) || 0,
           duration: q.durationSeconds ? `${Math.round(q.durationSeconds/60)} Min` : (q.duration || '—'),
           deadline: q.endsAt ? new Date(q.endsAt).toLocaleString() : (q.availableFrom ? new Date(q.availableFrom).toLocaleString() : '-'),
           status: q.status === 'published' ? 'Assigned' : (q.status ? q.status : 'Upcoming'),
@@ -65,15 +63,24 @@ export const StudentQuizList: React.FC = () => {
     >
       <div style={{ display: 'flex', flexDirection: 'column', gap: '1.5rem', paddingBottom: '2rem' }}>
         
-        {/* Metric Cards */}
+        {/* Metric Cards — derived from the real quizzes returned by the API */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: '1rem' }}>
-          {[
-            { label: 'ASSIGNED', val: '5', color: '#2563EB', bg: '#EFF6FF' },
-            { label: 'PENDING', val: '3', color: '#D97706', bg: '#FEFBF0' },
-            { label: 'COMPLETED', val: '12', color: '#16A34A', bg: '#EFFDF5' },
-            { label: 'AVG. SCORE', val: '82%', color: '#7C3AED', bg: '#F5F3FF' },
-            { label: 'DEADLINES', val: '2 ⏰', color: '#DC2626', bg: '#FEF2F2' }
-          ].map((metric, i) => (
+          {(() => {
+            const completed = quizzes.filter(q => q.status === 'Completed');
+            const pending = quizzes.filter(q => q.status !== 'Completed');
+            const scored = completed.filter(q => typeof q.score === 'number');
+            const avg = scored.length
+              ? Math.round(scored.reduce((s, q) => s + (q.score || 0), 0) / scored.length)
+              : null;
+            const withDeadline = quizzes.filter(q => q.deadline && q.deadline !== '-');
+            return [
+              { label: 'ASSIGNED', val: String(quizzes.length), color: '#2563EB', bg: '#EFF6FF' },
+              { label: 'PENDING', val: String(pending.length), color: '#D97706', bg: '#FEFBF0' },
+              { label: 'COMPLETED', val: String(completed.length), color: '#16A34A', bg: '#EFFDF5' },
+              { label: 'AVG. SCORE', val: avg != null ? `${avg}%` : '—', color: '#7C3AED', bg: '#F5F3FF' },
+              { label: 'DEADLINES', val: String(withDeadline.length), color: '#DC2626', bg: '#FEF2F2' }
+            ];
+          })().map((metric, i) => (
             <div key={i} style={{ backgroundColor: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1rem 1.25rem', display: 'flex', flexDirection: 'column', gap: '0.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
               <span style={{ fontSize: '0.675rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.5px' }}>{metric.label}</span>
               <span style={{ fontSize: '1.85rem', fontWeight: 800, color: metric.color }}>{metric.val}</span>
@@ -111,6 +118,15 @@ export const StudentQuizList: React.FC = () => {
             </select>
           </div>
         </div>
+
+        {loading && (
+          <div style={{ padding: '2rem', textAlign: 'center', fontWeight: 700, color: '#64748B' }}>Loading quizzes…</div>
+        )}
+        {!loading && quizzes.length === 0 && (
+          <div style={{ padding: '3rem', textAlign: 'center', color: '#64748B', fontWeight: 600, backgroundColor: 'white', border: '1px dashed var(--border-color)', borderRadius: 'var(--radius-lg)' }}>
+            No quizzes have been assigned to you yet.
+          </div>
+        )}
 
         {/* Grid layout exactly matching page 3 */}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1.5rem' }}>
@@ -179,8 +195,8 @@ export const StudentQuizList: React.FC = () => {
                   </div>
 
                   {quiz.status === 'Assigned' ? (
-                    <button 
-                      onClick={() => navigate(`/quiz/take/${quiz.id}/details`)}
+                    <button
+                      onClick={() => navigate(`/quiz/take/${quiz.id}/play`)}
                       style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none', padding: '0.6rem', borderRadius: 'var(--radius-md)', fontWeight: 800, fontSize: '0.8rem', cursor: 'pointer', marginTop: '0.75rem', boxShadow: '0 4px 8px rgba(13,138,188,0.1)' }}
                     >
                       Start Quiz
