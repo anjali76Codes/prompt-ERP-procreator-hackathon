@@ -6,6 +6,7 @@ import academicRoutes from './academic.routes';
 import lectureRoutes from './lecture.routes';
 import attendanceRoutes from './attendance.routes';
 import resourceRoutes from './resource.routes';
+import submissionRoutes from './submission.routes';
 import automationRoutes from './automation.routes';
 import notificationRoutes from './notification.routes';
 
@@ -25,6 +26,7 @@ router.use('/academic', academicRoutes);
 router.use('/', lectureRoutes);
 router.use('/', attendanceRoutes);
 router.use('/', resourceRoutes);
+router.use('/', submissionRoutes);
 
 router.use('/', automationRoutes);
 router.use('/', notificationRoutes);

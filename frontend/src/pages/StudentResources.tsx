@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FolderOpen, FileText, ClipboardList, Paperclip, Download, ExternalLink,
-  Search, Filter,
+  Search, Filter, Upload, X, CheckCircle2, Clock, RotateCcw, Loader2,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useAuth } from '../lib/auth/AuthContext';
-import { fetchStudentResources } from '../lib/resources/api';
-import type { Resource, ResourceKind } from '../lib/resources/types';
+import {
+  fetchStudentResources, fetchMySubmissions, submitToResource,
+} from '../lib/resources/api';
+import type { Resource, ResourceKind, Submission } from '../lib/resources/types';
 import { ApiError } from '../lib/api';
 
 const fmtBytes = (n: number): string => {
@@ -20,18 +22,29 @@ type KindFilter = 'all' | ResourceKind;
 export const StudentResources: React.FC = () => {
   const { user } = useAuth();
   const [items, setItems] = useState<Resource[]>([]);
+  const [subs, setSubs]   = useState<Record<string, Submission>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [kindFilter, setKindFilter] = useState<KindFilter>('all');
   const [subjectFilter, setSubjectFilter] = useState<string>('all');
   const [query, setQuery] = useState('');
 
+  // Load resources + my submissions in parallel.
   useEffect(() => {
     if (!user || user.role !== 'student') return;
     let cancelled = false;
     setLoading(true);
-    fetchStudentResources()
-      .then(list => { if (!cancelled) setItems(list); })
+    Promise.all([fetchStudentResources(), fetchMySubmissions()])
+      .then(([list, mine]) => {
+        if (cancelled) return;
+        setItems(list);
+        const map: Record<string, Submission> = {};
+        for (const s of mine) {
+          const rid = typeof s.resource === 'string' ? s.resource : s.resource._id;
+          map[rid] = s;
+        }
+        setSubs(map);
+      })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof ApiError ? e.message : 'Failed to load resources');
       })
@@ -64,6 +77,10 @@ export const StudentResources: React.FC = () => {
   const assignmentCount = items.filter(i => i.kind === 'assignment').length;
   const notesCount = items.filter(i => i.kind === 'notes').length;
   const dueSoon = items.filter(i => i.kind === 'assignment' && i.dueDate && new Date(i.dueDate) >= new Date()).length;
+
+  const onSubmissionSaved = (resourceId: string, submission: Submission) => {
+    setSubs(prev => ({ ...prev, [resourceId]: submission }));
+  };
 
   return (
     <AppLayout
@@ -150,7 +167,14 @@ export const StudentResources: React.FC = () => {
           <EmptyState hasAny={items.length > 0} />
         ) : (
           <div className="stack-md">
-            {filtered.map(item => <StudentRow key={item._id} item={item} />)}
+            {filtered.map(item => (
+              <StudentRow
+                key={item._id}
+                item={item}
+                submission={subs[item._id]}
+                onSaved={(s) => onSubmissionSaved(item._id, s)}
+              />
+            ))}
           </div>
         )}
       </div>
@@ -199,7 +223,11 @@ const EmptyState: React.FC<{ hasAny: boolean }> = ({ hasAny }) => (
   </div>
 );
 
-const StudentRow: React.FC<{ item: Resource }> = ({ item }) => {
+const StudentRow: React.FC<{
+  item: Resource;
+  submission?: Submission;
+  onSaved: (s: Submission) => void;
+}> = ({ item, submission, onSaved }) => {
   const subj = typeof item.subject === 'string' ? null : item.subject;
   const teacher = typeof item.teacher === 'string' ? null : item.teacher;
   const totalBytes = item.attachments.reduce((a, x) => a + x.size, 0);
@@ -276,6 +304,235 @@ const StudentRow: React.FC<{ item: Resource }> = ({ item }) => {
             ))}
           </div>
         </div>
+      )}
+
+      {item.kind === 'assignment' && (
+        <SubmissionBlock
+          resource={item}
+          submission={submission}
+          onSaved={onSaved}
+        />
+      )}
+    </div>
+  );
+};
+
+/* ------------------------ Submission block (assignment only) -------------- */
+
+const ACCEPT = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.ppt,.pptx,.zip';
+
+const submissionPillStyle = (
+  status: 'pending' | 'graded' | 'resubmit_requested'
+): { bg: string; color: string; label: string; icon: React.ReactNode } => {
+  if (status === 'graded') {
+    return { bg: '#DCFCE7', color: '#15803D', label: 'Graded', icon: <CheckCircle2 size={12} /> };
+  }
+  if (status === 'resubmit_requested') {
+    return { bg: '#FEE2E2', color: '#B91C1C', label: 'Resubmit requested', icon: <RotateCcw size={12} /> };
+  }
+  return { bg: '#FEF3C7', color: '#92400E', label: 'Submitted — pending review', icon: <Clock size={12} /> };
+};
+
+const SubmissionBlock: React.FC<{
+  resource: Resource;
+  submission?: Submission;
+  onSaved: (s: Submission) => void;
+}> = ({ resource, submission, onSaved }) => {
+  const [files, setFiles] = useState<File[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const canEdit = !submission || submission.status !== 'graded';
+  const isResubmitRequest = submission?.status === 'resubmit_requested';
+  const isPending = submission?.status === 'pending';
+  const isGraded  = submission?.status === 'graded';
+
+  const onPick = (list: FileList | null) => {
+    if (!list || list.length === 0) return;
+    setFiles(prev => [...prev, ...Array.from(list)]);
+    setErr(null);
+  };
+
+  const removeAt = (i: number) =>
+    setFiles(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleSubmit = async () => {
+    if (files.length === 0) {
+      setErr('Add at least one file');
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const saved = await submitToResource(resource._id, files);
+      onSaved(saved);
+      setFiles([]);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Failed to submit');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        borderTop: '1px solid #F1F5F9', paddingTop: '0.85rem',
+        display: 'flex', flexDirection: 'column', gap: '0.6rem',
+      }}
+    >
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.7rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          <Upload size={12} /> Your submission
+        </div>
+        {submission && (() => {
+          const pill = submissionPillStyle(submission.status);
+          return (
+            <span
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.25rem 0.6rem',
+                background: pill.bg, color: pill.color,
+                borderRadius: '999px',
+                fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.3px',
+              }}
+            >
+              {pill.icon} {pill.label}
+              {isGraded && submission.score !== undefined && (
+                <> · {submission.score}{resource.maxMarks !== undefined && ` / ${resource.maxMarks}`}</>
+              )}
+            </span>
+          );
+        })()}
+      </div>
+
+      {/* Existing submission files */}
+      {submission && submission.attachments.length > 0 && (
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
+          {submission.attachments.map(a => (
+            <a
+              key={a._id}
+              href={a.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+                padding: '0.4rem 0.7rem', border: '1px solid #E2E8F0', borderRadius: 'var(--radius-md)',
+                background: '#F8FAFC', color: '#0F172A', textDecoration: 'none',
+                fontSize: '0.76rem', fontWeight: 600,
+              }}
+            >
+              <Download size={12} color="#475569" />
+              <span style={{ maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                {a.name}
+              </span>
+              <span style={{ color: '#94A3B8', fontWeight: 500 }}>· {fmtBytes(a.size)}</span>
+            </a>
+          ))}
+        </div>
+      )}
+
+      {isResubmitRequest && (
+        <div style={{ fontSize: '0.78rem', color: '#B91C1C', fontWeight: 500 }}>
+          Your teacher asked you to resubmit this. Upload a new version below.
+        </div>
+      )}
+
+      {isGraded && (
+        <div style={{ fontSize: '0.78rem', color: '#15803D', fontWeight: 500 }}>
+          This submission has been graded. You can no longer change it.
+        </div>
+      )}
+
+      {/* Upload UI (hidden when graded) */}
+      {canEdit && (
+        <>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            accept={ACCEPT}
+            onChange={e => { onPick(e.target.files); e.target.value = ''; }}
+            style={{ display: 'none' }}
+          />
+
+          {files.length > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+              {files.map((f, i) => (
+                <div
+                  key={`${f.name}-${i}`}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '0.5rem',
+                    padding: '0.4rem 0.65rem',
+                    border: '1px solid #E2E8F0', borderRadius: '0.45rem',
+                    background: 'white',
+                  }}
+                >
+                  <Paperclip size={12} color="#475569" />
+                  <div style={{ flex: 1, minWidth: 0, fontSize: '0.78rem', fontWeight: 600, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    {f.name}
+                  </div>
+                  <span style={{ fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500 }}>{fmtBytes(f.size)}</span>
+                  <button
+                    type="button"
+                    onClick={() => removeAt(i)}
+                    aria-label="Remove"
+                    style={{
+                      background: 'transparent', border: 'none', cursor: 'pointer',
+                      color: '#94A3B8', display: 'flex', alignItems: 'center',
+                    }}
+                  >
+                    <X size={13} />
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {err && (
+            <div style={{ fontSize: '0.76rem', color: '#EF4444', fontWeight: 500 }}>{err}</div>
+          )}
+
+          <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              onClick={() => inputRef.current?.click()}
+              disabled={busy}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.5rem 0.85rem',
+                background: 'white', color: '#334155',
+                border: '1px solid #E2E8F0', borderRadius: '0.5rem',
+                fontWeight: 600, fontSize: '0.8rem',
+                cursor: busy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <Paperclip size={13} /> Pick files
+            </button>
+            <button
+              type="button"
+              onClick={handleSubmit}
+              disabled={busy || files.length === 0}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                padding: '0.5rem 1rem',
+                background: 'var(--primary)', color: 'white',
+                border: 'none', borderRadius: '0.5rem',
+                fontWeight: 700, fontSize: '0.8rem',
+                cursor: busy || files.length === 0 ? 'not-allowed' : 'pointer',
+                opacity: busy || files.length === 0 ? 0.6 : 1,
+              }}
+            >
+              {busy ? <Loader2 size={13} className="animate-spin" /> : <Upload size={13} />}
+              {busy
+                ? 'Uploading…'
+                : isPending || isResubmitRequest
+                  ? 'Replace submission'
+                  : 'Submit'}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

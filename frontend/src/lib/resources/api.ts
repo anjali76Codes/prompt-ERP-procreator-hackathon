@@ -1,5 +1,5 @@
 import { API_BASE, ApiError, apiRequest, getToken } from '../api';
-import type { Resource, ResourceKind, ResourceStatus } from './types';
+import type { Resource, ResourceKind, ResourceStatus, Submission } from './types';
 
 interface ListFilter {
   kind?: ResourceKind;
@@ -155,4 +155,64 @@ export const fetchStudentResources = async (opts: {
     `/me/resources${qs({ kind: opts.kind, subjectId: opts.subjectId })}`
   );
   return data.resources;
+};
+
+/* ----------------------------- Submissions ------------------------------- */
+
+/** Student: submit (or resubmit) files for an assignment. */
+export const submitToResource = async (
+  resourceId: string,
+  files: File[]
+): Promise<Submission> => {
+  const form = new FormData();
+  for (const f of files) form.append('files', f, f.name);
+  const data = await multipartRequest<{ submission: Submission }>(
+    `/resources/${resourceId}/submissions/mine`, 'POST', form
+  );
+  return data.submission;
+};
+
+/** Student: read their own submission for an assignment (null if not submitted). */
+export const fetchMySubmission = async (resourceId: string): Promise<Submission | null> => {
+  const data = await apiRequest<{ submission: Submission | null }>(
+    `/resources/${resourceId}/submissions/mine`
+  );
+  return data.submission;
+};
+
+/** Student: list all their submissions (used for showing status across feed). */
+export const fetchMySubmissions = async (): Promise<Submission[]> => {
+  const data = await apiRequest<{ submissions: Submission[] }>(`/me/submissions`);
+  return data.submissions;
+};
+
+/** Teacher: all submissions for an assignment. */
+export const listSubmissionsForResource = async (
+  resourceId: string
+): Promise<Submission[]> => {
+  const data = await apiRequest<{ submissions: Submission[] }>(
+    `/resources/${resourceId}/submissions`
+  );
+  return data.submissions;
+};
+
+/** Teacher: assign a numeric score. */
+export const gradeSubmission = async (
+  submissionId: string,
+  score: number
+): Promise<Submission> => {
+  const data = await apiRequest<{ submission: Submission }>(
+    `/submissions/${submissionId}/grade`,
+    { method: 'POST', body: { score } }
+  );
+  return data.submission;
+};
+
+/** Teacher: flag a submission as needing resubmission. */
+export const requestResubmission = async (submissionId: string): Promise<Submission> => {
+  const data = await apiRequest<{ submission: Submission }>(
+    `/submissions/${submissionId}/request-resubmit`,
+    { method: 'POST' }
+  );
+  return data.submission;
 };

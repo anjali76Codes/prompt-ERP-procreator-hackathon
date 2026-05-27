@@ -2,43 +2,32 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Clock, CheckCircle2, AlertTriangle, RotateCcw, TrendingUp, ChevronRight,
-  Search, ClipboardList, ChevronLeft,
+  Search, ClipboardList, ChevronLeft, Eye, Loader2, Save, X, Download,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
-import { fetchResource } from '../lib/resources/api';
-import type { Resource } from '../lib/resources/types';
+import { PdfFrame } from '../components/ui/PdfFrame';
+import {
+  fetchResource, listSubmissionsForResource, gradeSubmission, requestResubmission,
+} from '../lib/resources/api';
+import type {
+  Resource, ResourceAttachment, Submission, SubmissionStatus,
+} from '../lib/resources/types';
 import { ApiError } from '../lib/api';
 
-/* -------------------------------------------------------------------------- */
-/*  Demo submissions data                                                     */
-/*                                                                            */
-/*  The submissions backend hasn't been built yet — this page renders demo    */
-/*  data so the UX is reviewable. When the Submission model lands, swap this  */
-/*  for a real fetch keyed off the assignment id.                             */
-/* -------------------------------------------------------------------------- */
+const fmtBytes = (n: number): string => {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / (1024 * 1024)).toFixed(2)} MB`;
+};
 
-type SubmissionStatus = 'pending' | 'graded' | 'late' | 'resubmitted';
+const formatWhen = (iso?: string): string => {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString(undefined, {
+    month: 'short', day: '2-digit', hour: '2-digit', minute: '2-digit',
+  });
+};
 
-interface DemoSubmission {
-  id: string;
-  studentName: string;
-  rollNumber: string;
-  status: SubmissionStatus;
-  submittedAt: string;
-  fileLabel: string;
-  grade?: { score: number; outOf: number };
-  lateBy?: string;
-  avatar: string;
-}
-
-const DEMO: DemoSubmission[] = [
-  { id: '1', studentName: 'Alex Thompson',  rollNumber: 'CS-2024-042', status: 'pending',     submittedAt: 'Oct 24, 2:15 PM',  fileLabel: '12 MB PDF',  avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&h=100&q=80' },
-  { id: '2', studentName: 'Elena Rodriguez', rollNumber: 'CS-2024-089', status: 'graded',      submittedAt: 'Oct 23, 11:40 AM', fileLabel: 'Zip Archive', grade: { score: 85, outOf: 100 }, avatar: 'https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&w=100&h=100&q=80' },
-  { id: '3', studentName: 'Marcus Chen',     rollNumber: 'CS-2024-012', status: 'late',        submittedAt: 'Oct 25, 02:00 AM', fileLabel: 'GitHub Link', lateBy: '2h', avatar: 'https://images.unsplash.com/photo-1531427186611-ecfd6d936c79?auto=format&fit=crop&w=100&h=100&q=80' },
-  { id: '4', studentName: 'Sarah Miller',    rollNumber: 'CS-2024-115', status: 'resubmitted', submittedAt: 'Oct 24, 09:10 PM', fileLabel: '2 MB Docx',   avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=100&h=100&q=80' },
-];
-
-type Tab = 'all' | 'pending' | 'graded' | 'late';
+type Tab = 'all' | 'pending' | 'graded' | 'resubmit_requested';
 
 /* -------------------------------------------------------------------------- */
 /*  Page                                                                       */
@@ -49,35 +38,70 @@ export const ReviewSubmissions: React.FC = () => {
   const navigate = useNavigate();
 
   const [resource, setResource] = useState<Resource | null>(null);
+  const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
   const [tab, setTab] = useState<Tab>('all');
   const [query, setQuery] = useState('');
 
-  useEffect(() => {
+  // Viewer modal + grade modal state.
+  const [viewing, setViewing] = useState<{ submission: Submission; idx: number } | null>(null);
+  const [grading, setGrading] = useState<Submission | null>(null);
+
+  const refresh = async () => {
     if (!id) return;
-    let cancelled = false;
-    fetchResource(id)
-      .then(r => { if (!cancelled) setResource(r); })
-      .catch((e: unknown) => {
-        if (!cancelled) setLoadError(e instanceof ApiError ? e.message : 'Failed to load assignment');
-      });
-    return () => { cancelled = true; };
-  }, [id]);
+    setLoading(true);
+    setLoadError(null);
+    try {
+      const [r, subs] = await Promise.all([
+        fetchResource(id),
+        listSubmissionsForResource(id),
+      ]);
+      setResource(r);
+      setSubmissions(subs);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : 'Failed to load submissions');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { void refresh(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [id]);
 
   const counts = useMemo(() => ({
-    all:     DEMO.length,
-    pending: DEMO.filter(s => s.status === 'pending').length,
-    graded:  DEMO.filter(s => s.status === 'graded').length,
-    late:    DEMO.filter(s => s.status === 'late').length,
-  }), []);
+    all: submissions.length,
+    pending: submissions.filter(s => s.status === 'pending').length,
+    graded:  submissions.filter(s => s.status === 'graded').length,
+    resubmit_requested: submissions.filter(s => s.status === 'resubmit_requested').length,
+  }), [submissions]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return DEMO
+    return submissions
       .filter(s => tab === 'all' ? true : s.status === tab)
-      .filter(s => q === '' ? true :
-        s.studentName.toLowerCase().includes(q) || s.rollNumber.toLowerCase().includes(q));
-  }, [tab, query]);
+      .filter(s => {
+        if (!q) return true;
+        const stu = typeof s.student === 'string' ? null : s.student;
+        return (stu?.name ?? '').toLowerCase().includes(q)
+          || (stu?.email ?? '').toLowerCase().includes(q)
+          || (stu?.rollNumber ?? '').toLowerCase().includes(q);
+      });
+  }, [submissions, tab, query]);
+
+  const replaceLocal = (next: Submission) => {
+    setSubmissions(prev => prev.map(s => s._id === next._id ? next : s));
+  };
+
+  const onRequestResubmit = async (submission: Submission) => {
+    const stu = typeof submission.student === 'string' ? null : submission.student;
+    if (!confirm(`Ask ${stu?.name ?? 'this student'} to resubmit?`)) return;
+    try {
+      const updated = await requestResubmission(submission._id);
+      replaceLocal(updated);
+    } catch (e) {
+      setLoadError(e instanceof ApiError ? e.message : 'Failed to request resubmission');
+    }
+  };
 
   return (
     <AppLayout
@@ -106,24 +130,15 @@ export const ReviewSubmissions: React.FC = () => {
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: '1.25rem', alignItems: 'flex-start' }}>
         {/* Main column */}
         <div>
-          <h1 style={{ margin: '0 0 1.25rem', fontSize: '1.75rem', fontWeight: 800, color: '#0F172A' }}>
-            Review Submissions
+          <h1 style={{ margin: '0 0 0.4rem', fontSize: '1.6rem', fontWeight: 800, color: '#0F172A' }}>
+            {resource?.title ?? 'Review Submissions'}
           </h1>
-
-          {/* Demo data notice */}
-          <div
-            style={{
-              padding: '0.65rem 0.85rem',
-              background: '#FFFBEB', border: '1px solid #FDE68A',
-              borderRadius: '0.5rem', marginBottom: '1rem',
-              fontSize: '0.78rem', color: '#92400E', fontWeight: 500,
-              display: 'flex', alignItems: 'center', gap: '0.5rem',
-            }}
-          >
-            <AlertTriangle size={14} />
-            Demo data — the student submissions backend (`Submission` model) hasn't been built yet.
-            This screen previews how it will look once it lands.
-          </div>
+          {resource && (
+            <p style={{ margin: '0 0 1rem', color: '#64748B', fontSize: '0.85rem' }}>
+              {resource.maxMarks !== undefined && `Out of ${resource.maxMarks} marks · `}
+              {resource.dueDate && `Due ${new Date(resource.dueDate).toLocaleDateString()}`}
+            </p>
+          )}
 
           {/* Tabs */}
           <div
@@ -135,10 +150,10 @@ export const ReviewSubmissions: React.FC = () => {
             }}
           >
             {([
-              { key: 'all',     label: 'All',     count: counts.all     },
-              { key: 'pending', label: 'Pending', count: counts.pending },
-              { key: 'graded',  label: 'Graded',  count: counts.graded  },
-              { key: 'late',    label: 'Late',    count: counts.late    },
+              { key: 'all',                 label: 'All',     count: counts.all },
+              { key: 'pending',             label: 'Pending', count: counts.pending },
+              { key: 'graded',              label: 'Graded',  count: counts.graded },
+              { key: 'resubmit_requested',  label: 'Resubmit', count: counts.resubmit_requested },
             ] as { key: Tab; label: string; count: number }[]).map(t => (
               <button
                 key={t.key}
@@ -172,7 +187,7 @@ export const ReviewSubmissions: React.FC = () => {
             <input
               value={query}
               onChange={e => setQuery(e.target.value)}
-              placeholder="Search student or roll no..."
+              placeholder="Search student name, email, or roll no..."
               style={{
                 flex: 1, border: 'none', outline: 'none', background: 'transparent',
                 fontSize: '0.88rem', fontFamily: 'inherit',
@@ -191,7 +206,7 @@ export const ReviewSubmissions: React.FC = () => {
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: '2.2fr 1.3fr 1.4fr auto',
+                gridTemplateColumns: '2.2fr 1.4fr 1.4fr auto',
                 padding: '0.85rem 1.25rem',
                 borderBottom: '1px solid #F1F5F9',
                 fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.6px',
@@ -199,43 +214,60 @@ export const ReviewSubmissions: React.FC = () => {
                 background: '#FAFBFC',
               }}
             >
-              <div>Student Identity</div>
-              <div>Submission Status</div>
-              <div>Last Modified</div>
-              <div style={{ textAlign: 'right' }}>Action</div>
+              <div>Student</div>
+              <div>Status</div>
+              <div>Submitted</div>
+              <div style={{ textAlign: 'right' }}>Actions</div>
             </div>
 
-            {filtered.length === 0 ? (
+            {loading ? (
               <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.88rem' }}>
-                No submissions match the current filter.
+                <Loader2 size={16} className="animate-spin" /> Loading submissions…
               </div>
-            ) : filtered.map(s => <SubmissionRow key={s.id} submission={s} />)}
-
-            {/* Pagination footer */}
-            <div
-              style={{
-                display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                padding: '0.85rem 1.25rem', borderTop: '1px solid #F1F5F9',
-                background: '#FAFBFC',
-              }}
-            >
-              <span style={{ fontSize: '0.74rem', fontWeight: 700, letterSpacing: '0.5px', color: '#64748B', textTransform: 'uppercase' }}>
-                Showing 1–{filtered.length} of {counts.all} submissions
-              </span>
-              <div style={{ display: 'flex', gap: '0.3rem' }}>
-                <PageBtn disabled><ChevronLeft size={13} /></PageBtn>
-                <PageBtn active>1</PageBtn>
-                <PageBtn>2</PageBtn>
-                <PageBtn>3</PageBtn>
-                <PageBtn><ChevronRight size={13} /></PageBtn>
+            ) : filtered.length === 0 ? (
+              <div style={{ padding: '2.5rem', textAlign: 'center', color: '#64748B', fontSize: '0.88rem' }}>
+                {submissions.length === 0
+                  ? 'No submissions yet.'
+                  : 'No submissions match the current filter.'}
               </div>
-            </div>
+            ) : filtered.map(s => (
+              <SubmissionRow
+                key={s._id}
+                submission={s}
+                maxMarks={resource?.maxMarks}
+                onView={() => setViewing({ submission: s, idx: 0 })}
+                onGrade={() => setGrading(s)}
+                onRequestResubmit={() => onRequestResubmit(s)}
+              />
+            ))}
           </div>
         </div>
 
         {/* Right rail — stats */}
-        <StatsSidebar pending={counts.pending} />
+        <StatsSidebar
+          counts={counts}
+          resource={resource}
+          submissions={submissions}
+        />
       </div>
+
+      {viewing && (
+        <ViewerModal
+          submission={viewing.submission}
+          activeIdx={viewing.idx}
+          onChangeIdx={(i) => setViewing(v => v ? { ...v, idx: i } : v)}
+          onClose={() => setViewing(null)}
+        />
+      )}
+
+      {grading && (
+        <GradeModal
+          submission={grading}
+          maxMarks={resource?.maxMarks}
+          onClose={() => setGrading(null)}
+          onSaved={(updated) => { replaceLocal(updated); setGrading(null); }}
+        />
+      )}
     </AppLayout>
   );
 };
@@ -244,25 +276,33 @@ export const ReviewSubmissions: React.FC = () => {
 /*  Submission row                                                             */
 /* -------------------------------------------------------------------------- */
 
-const statusPill = (status: SubmissionStatus, lateBy?: string): { label: string; bg: string; color: string; icon: React.ReactNode } => {
-  if (status === 'pending')     return { label: 'PENDING',         bg: '#FEF3C7', color: '#92400E', icon: <Clock size={12} /> };
-  if (status === 'graded')      return { label: '',                 bg: '#DCFCE7', color: '#15803D', icon: <CheckCircle2 size={12} /> };
-  if (status === 'late')        return { label: `LATE (${lateBy ?? '—'})`, bg: '#FEE2E2', color: '#B91C1C', icon: <AlertTriangle size={12} /> };
-  return                          { label: 'RE-SUBMITTED',          bg: '#FEF3C7', color: '#92400E', icon: <RotateCcw size={12} /> };
+const statusPill = (status: SubmissionStatus): { label: string; bg: string; color: string; icon: React.ReactNode } => {
+  if (status === 'pending')            return { label: 'PENDING',   bg: '#FEF3C7', color: '#92400E', icon: <Clock size={12} /> };
+  if (status === 'graded')             return { label: 'GRADED',    bg: '#DCFCE7', color: '#15803D', icon: <CheckCircle2 size={12} /> };
+  return                                  { label: 'RESUBMIT',  bg: '#FEE2E2', color: '#B91C1C', icon: <RotateCcw size={12} /> };
 };
 
-const SubmissionRow: React.FC<{ submission: DemoSubmission }> = ({ submission }) => {
-  const pill = statusPill(submission.status, submission.lateBy);
-  const graded = submission.status === 'graded';
-  const gradeLabel = graded && submission.grade
-    ? `GRADED (${submission.grade.score}/${submission.grade.outOf})`
+const SubmissionRow: React.FC<{
+  submission: Submission;
+  maxMarks?: number;
+  onView: () => void;
+  onGrade: () => void;
+  onRequestResubmit: () => void;
+}> = ({ submission, maxMarks, onView, onGrade, onRequestResubmit }) => {
+  const student = typeof submission.student === 'string' ? null : submission.student;
+  const pill = statusPill(submission.status);
+  const gradedLabel = submission.status === 'graded' && submission.score !== undefined
+    ? `GRADED (${submission.score}${maxMarks !== undefined ? `/${maxMarks}` : ''})`
     : pill.label;
+
+  const initials = (student?.name ?? '?')
+    .split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
 
   return (
     <div
       style={{
         display: 'grid',
-        gridTemplateColumns: '2.2fr 1.3fr 1.4fr auto',
+        gridTemplateColumns: '2.2fr 1.4fr 1.4fr auto',
         alignItems: 'center',
         padding: '1rem 1.25rem',
         borderBottom: '1px solid #F1F5F9',
@@ -270,15 +310,22 @@ const SubmissionRow: React.FC<{ submission: DemoSubmission }> = ({ submission })
       }}
     >
       <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', minWidth: 0 }}>
-        <img
-          src={submission.avatar}
-          alt={submission.studentName}
-          style={{ width: 38, height: 38, borderRadius: '50%', objectFit: 'cover', flexShrink: 0 }}
-        />
+        <div
+          style={{
+            width: 38, height: 38, borderRadius: '50%',
+            background: '#EFF6FF', color: 'var(--primary)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            flexShrink: 0, fontWeight: 800, fontSize: '0.85rem',
+          }}
+        >
+          {initials || '?'}
+        </div>
         <div style={{ minWidth: 0 }}>
-          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>{submission.studentName}</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>
+            {student?.name ?? 'Unknown student'}
+          </div>
           <div style={{ fontSize: '0.78rem', color: '#64748B', marginTop: '0.15rem' }}>
-            Roll No: {submission.rollNumber}
+            {student?.rollNumber ? `Roll: ${student.rollNumber}` : student?.email ?? '—'}
           </div>
         </div>
       </div>
@@ -288,46 +335,360 @@ const SubmissionRow: React.FC<{ submission: DemoSubmission }> = ({ submission })
           style={{
             display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
             padding: '0.3rem 0.65rem',
-            background: graded ? '#DCFCE7' : pill.bg,
-            color: graded ? '#15803D' : pill.color,
+            background: pill.bg, color: pill.color,
             borderRadius: '999px',
             fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.4px',
           }}
         >
           {pill.icon}
-          {gradeLabel}
+          {gradedLabel}
         </span>
       </div>
 
       <div>
-        <div style={{ fontSize: '0.84rem', color: '#0F172A', fontWeight: 500 }}>{submission.submittedAt}</div>
-        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.1rem' }}>{submission.fileLabel}</div>
+        <div style={{ fontSize: '0.84rem', color: '#0F172A', fontWeight: 500 }}>
+          {formatWhen(submission.submittedAt)}
+        </div>
+        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: '0.1rem' }}>
+          {submission.attachments.length} file{submission.attachments.length === 1 ? '' : 's'}
+        </div>
       </div>
 
-      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-        {graded ? (
-          <button
-            style={{
-              padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
-              background: '#F1F5F9', color: '#334155',
-              border: 'none', cursor: 'pointer',
-              fontWeight: 600, fontSize: '0.8rem',
-            }}
-          >
-            Edit Grade
-          </button>
-        ) : (
-          <button
-            style={{
-              padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
-              background: 'var(--primary)', color: 'white',
-              border: 'none', cursor: 'pointer',
-              fontWeight: 700, fontSize: '0.8rem',
-            }}
-          >
-            Review
-          </button>
+      <div style={{ display: 'flex', gap: '0.3rem', justifyContent: 'flex-end' }}>
+        <IconBtn label="View files" onClick={onView} disabled={submission.attachments.length === 0}>
+          <Eye size={15} />
+        </IconBtn>
+        <IconBtn
+          label="Ask to resubmit"
+          onClick={onRequestResubmit}
+          disabled={submission.status === 'resubmit_requested'}
+        >
+          <RotateCcw size={15} />
+        </IconBtn>
+        <button
+          onClick={onGrade}
+          style={{
+            padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
+            background: submission.status === 'graded' ? '#F1F5F9' : 'var(--primary)',
+            color: submission.status === 'graded' ? '#334155' : 'white',
+            border: 'none', cursor: 'pointer',
+            fontSize: '0.78rem', fontWeight: 700,
+            whiteSpace: 'nowrap',
+          }}
+        >
+          {submission.status === 'graded' ? 'Edit grade' : 'Grade'}
+        </button>
+      </div>
+    </div>
+  );
+};
+
+const IconBtn: React.FC<{
+  label: string;
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}> = ({ label, onClick, disabled, children }) => (
+  <button
+    onClick={onClick}
+    disabled={disabled}
+    title={label}
+    aria-label={label}
+    style={{
+      width: 34, height: 34, borderRadius: '0.45rem',
+      background: 'transparent', border: '1px solid #E2E8F0',
+      color: disabled ? '#CBD5E1' : '#475569',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      cursor: disabled ? 'not-allowed' : 'pointer',
+    }}
+  >
+    {children}
+  </button>
+);
+
+/* -------------------------------------------------------------------------- */
+/*  Viewer modal                                                               */
+/* -------------------------------------------------------------------------- */
+
+const ViewerModal: React.FC<{
+  submission: Submission;
+  activeIdx: number;
+  onChangeIdx: (i: number) => void;
+  onClose: () => void;
+}> = ({ submission, activeIdx, onChangeIdx, onClose }) => {
+  const student = typeof submission.student === 'string' ? null : submission.student;
+  const att: ResourceAttachment | undefined = submission.attachments[activeIdx];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1.5rem', zIndex: 100,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '92vw', maxWidth: 1100, height: '90vh',
+          background: 'white', borderRadius: '0.85rem',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.25)',
+        }}
+      >
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0.85rem 1.1rem', borderBottom: '1px solid #E2E8F0' }}>
+          <div style={{ minWidth: 0 }}>
+            <div style={{ fontSize: '0.95rem', fontWeight: 800, color: '#0F172A' }}>
+              {student?.name ?? 'Submission'}
+            </div>
+            <div style={{ fontSize: '0.76rem', color: '#64748B', marginTop: '0.15rem' }}>
+              {att?.name ?? '—'} {att && `· ${fmtBytes(att.size)}`}
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '0.4rem' }}>
+            {att && (
+              <a
+                href={att.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                  padding: '0.45rem 0.8rem',
+                  background: 'white', color: '#334155',
+                  border: '1px solid #E2E8F0', borderRadius: '0.5rem',
+                  fontSize: '0.78rem', fontWeight: 600,
+                  textDecoration: 'none',
+                }}
+              >
+                <Download size={13} /> Open
+              </a>
+            )}
+            <button
+              onClick={onClose}
+              aria-label="Close"
+              style={{
+                width: 32, height: 32, borderRadius: '0.45rem',
+                background: 'white', border: '1px solid #E2E8F0',
+                color: '#475569',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                cursor: 'pointer',
+              }}
+            >
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+
+        {/* Body */}
+        <div style={{ flex: 1, background: '#F1F5F9', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+          {att ? (
+            att.mimeType === 'application/pdf' ? (
+              <PdfFrame src={att.url} title={att.name} />
+            ) : att.mimeType.startsWith('image/') ? (
+              <img
+                src={att.url}
+                alt={att.name}
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', background: 'white' }}
+              />
+            ) : (
+              <div style={{ textAlign: 'center', padding: '2rem', color: '#475569' }}>
+                <div style={{ fontSize: '0.9rem', fontWeight: 700, color: '#0F172A' }}>
+                  No inline preview for this file type
+                </div>
+                <a
+                  href={att.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                    marginTop: '0.85rem',
+                    padding: '0.55rem 1rem',
+                    background: 'var(--primary)', color: 'white',
+                    border: 'none', borderRadius: '0.5rem',
+                    fontWeight: 700, fontSize: '0.82rem',
+                    textDecoration: 'none',
+                  }}
+                >
+                  <Download size={13} /> Download to view
+                </a>
+              </div>
+            )
+          ) : (
+            <span style={{ color: '#94A3B8' }}>No file</span>
+          )}
+        </div>
+
+        {/* File switcher */}
+        {submission.attachments.length > 1 && (
+          <div style={{ display: 'flex', gap: '0.4rem', padding: '0.6rem 0.75rem', borderTop: '1px solid #E2E8F0', overflowX: 'auto' }}>
+            {submission.attachments.map((a, idx) => (
+              <button
+                key={a._id}
+                onClick={() => onChangeIdx(idx)}
+                style={{
+                  border: '1px solid', borderColor: idx === activeIdx ? 'var(--primary)' : '#E2E8F0',
+                  background: idx === activeIdx ? '#EFF6FF' : 'white',
+                  color: idx === activeIdx ? 'var(--primary)' : '#475569',
+                  padding: '0.35rem 0.7rem', borderRadius: '0.4rem',
+                  fontSize: '0.72rem', fontWeight: 700, cursor: 'pointer',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {a.name.length > 24 ? `${a.name.slice(0, 22)}…` : a.name}
+              </button>
+            ))}
+          </div>
         )}
+      </div>
+    </div>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Grade modal                                                                */
+/* -------------------------------------------------------------------------- */
+
+const GradeModal: React.FC<{
+  submission: Submission;
+  maxMarks?: number;
+  onClose: () => void;
+  onSaved: (s: Submission) => void;
+}> = ({ submission, maxMarks, onClose, onSaved }) => {
+  const [score, setScore] = useState<string>(
+    submission.score !== undefined ? String(submission.score) : ''
+  );
+  const [busy, setBusy]   = useState(false);
+  const [err, setErr]     = useState<string | null>(null);
+  const student = typeof submission.student === 'string' ? null : submission.student;
+
+  const handleSave = async () => {
+    const n = Number(score);
+    if (score === '' || Number.isNaN(n) || n < 0) {
+      setErr('Enter a valid score (0 or more)');
+      return;
+    }
+    if (maxMarks !== undefined && n > maxMarks) {
+      setErr(`Score cannot exceed ${maxMarks}`);
+      return;
+    }
+    setBusy(true);
+    setErr(null);
+    try {
+      const updated = await gradeSubmission(submission._id, n);
+      onSaved(updated);
+    } catch (e) {
+      setErr(e instanceof ApiError ? e.message : 'Failed to save grade');
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.45)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1.5rem', zIndex: 110,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 420,
+          background: 'white', borderRadius: '0.85rem',
+          boxShadow: '0 18px 40px rgba(15, 23, 42, 0.25)',
+          padding: '1.25rem', display: 'flex', flexDirection: 'column', gap: '1rem',
+        }}
+      >
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+              Grade submission
+            </h3>
+            <p style={{ margin: '0.25rem 0 0', fontSize: '0.8rem', color: '#64748B' }}>
+              {student?.name ?? 'Student'}
+              {student?.rollNumber && ` · ${student.rollNumber}`}
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              width: 30, height: 30, borderRadius: '0.4rem',
+              background: 'white', border: '1px solid #E2E8F0',
+              color: '#475569', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+            }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        <div>
+          <label style={{ display: 'block', fontSize: '0.85rem', fontWeight: 600, color: '#334155', marginBottom: '0.4rem' }}>
+            Score{maxMarks !== undefined && ` (out of ${maxMarks})`}
+          </label>
+          <input
+            type="number"
+            value={score}
+            onChange={e => setScore(e.target.value)}
+            min={0}
+            max={maxMarks}
+            placeholder={maxMarks !== undefined ? `0 – ${maxMarks}` : '0+'}
+            autoFocus
+            style={{
+              width: '100%',
+              padding: '0.65rem 0.85rem',
+              border: '1px solid #E2E8F0',
+              borderRadius: '0.55rem',
+              fontSize: '0.95rem', fontWeight: 600,
+              outline: 'none',
+            }}
+          />
+          {err && (
+            <div style={{ marginTop: '0.4rem', fontSize: '0.76rem', color: '#EF4444', fontWeight: 500 }}>
+              {err}
+            </div>
+          )}
+        </div>
+
+        <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '0.45rem' }}>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={busy}
+            style={{
+              padding: '0.55rem 0.95rem',
+              background: 'white', color: '#334155',
+              border: '1px solid #E2E8F0', borderRadius: '0.5rem',
+              fontWeight: 600, fontSize: '0.83rem', cursor: 'pointer',
+            }}
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={busy}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.55rem 1.1rem',
+              background: 'var(--primary)', color: 'white',
+              border: 'none', borderRadius: '0.5rem',
+              fontWeight: 700, fontSize: '0.83rem',
+              cursor: busy ? 'wait' : 'pointer',
+              opacity: busy ? 0.75 : 1,
+            }}
+          >
+            {busy ? <Loader2 size={13} className="animate-spin" /> : <Save size={13} />}
+            {busy ? 'Saving…' : 'Save grade'}
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -337,86 +698,51 @@ const SubmissionRow: React.FC<{ submission: DemoSubmission }> = ({ submission })
 /*  Stats sidebar                                                              */
 /* -------------------------------------------------------------------------- */
 
-const StatsSidebar: React.FC<{ pending: number }> = ({ pending }) => {
-  const grades = [
-    { letter: 'A',   count: 12, max: 18 },
-    { letter: 'B',   count: 18, max: 18 },
-    { letter: 'C',   count: 6,  max: 18 },
-    { letter: 'D/F', count: 4,  max: 18 },
-  ];
+const StatsSidebar: React.FC<{
+  counts: { all: number; pending: number; graded: number; resubmit_requested: number };
+  resource: Resource | null;
+  submissions: Submission[];
+}> = ({ counts, resource, submissions }) => {
+  const graded = submissions.filter(s => s.status === 'graded' && s.score !== undefined);
+  const avg = graded.length > 0
+    ? (graded.reduce((a, s) => a + (s.score ?? 0), 0) / graded.length).toFixed(1)
+    : '—';
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', position: 'sticky', top: '1rem' }}>
-      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>Assignment Stats</h3>
+      <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 800, color: '#0F172A' }}>Overview</h3>
 
       <StatCard
-        label="SUBMISSION RATE"
-        value="94.2%"
-        sub="42 of 45 students submitted"
-        progress={94.2}
+        label="SUBMISSIONS"
+        value={String(counts.all)}
+        sub={`${counts.pending} pending · ${counts.graded} graded`}
         icon={<TrendingUp size={14} color="#16A34A" />}
       />
 
       <StatCard
         label="AVERAGE SCORE"
-        value="78.5"
-        sub={<span style={{ color: '#16A34A', fontWeight: 600 }}>↑ +4.2 pts from mid-term</span>}
+        value={avg}
+        sub={resource?.maxMarks !== undefined ? `out of ${resource.maxMarks}` : 'No max marks set'}
         icon={<TrendingUp size={14} color="#16A34A" />}
       />
 
-      {/* Grade distribution */}
-      <div
-        style={{
-          background: 'white', border: '1px solid #E2E8F0',
-          borderRadius: '0.7rem', padding: '1rem 1.1rem',
-        }}
-      >
-        <div style={{ fontSize: '0.7rem', fontWeight: 800, letterSpacing: '0.6px', color: '#64748B', marginBottom: '0.75rem' }}>
-          GRADE DISTRIBUTION
-        </div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.55rem' }}>
-          {grades.map(g => (
-            <div key={g.letter} style={{ display: 'grid', gridTemplateColumns: '24px 1fr 28px', alignItems: 'center', gap: '0.6rem' }}>
-              <span style={{ fontSize: '0.83rem', fontWeight: 700, color: '#334155' }}>{g.letter}</span>
-              <div style={{ height: 8, background: '#E2E8F0', borderRadius: 4, overflow: 'hidden' }}>
-                <div
-                  style={{
-                    height: '100%',
-                    width: `${(g.count / g.max) * 100}%`,
-                    background: 'var(--primary)',
-                    borderRadius: 4,
-                  }}
-                />
-              </div>
-              <span style={{ fontSize: '0.8rem', fontWeight: 700, color: '#0F172A', textAlign: 'right' }}>{g.count}</span>
-            </div>
-          ))}
-        </div>
-      </div>
-
-      {/* Needs Attention */}
-      <div
-        style={{
-          background: 'var(--primary)', color: 'white',
-          borderRadius: '0.7rem', padding: '1rem 1.1rem',
-          display: 'flex', flexDirection: 'column', gap: '0.6rem',
-        }}
-      >
-        <div style={{ fontSize: '0.95rem', fontWeight: 800 }}>Needs Attention</div>
-        <p style={{ margin: 0, fontSize: '0.82rem', lineHeight: 1.5, opacity: 0.95 }}>
-          {pending} late submission{pending === 1 ? '' : 's'} haven't been reviewed yet.
-        </p>
-        <button
+      {counts.resubmit_requested > 0 && (
+        <div
           style={{
-            marginTop: '0.4rem', padding: '0.55rem 0.9rem',
-            background: 'white', color: 'var(--primary)',
-            border: 'none', borderRadius: '0.5rem',
-            fontWeight: 700, fontSize: '0.83rem',
-            cursor: 'pointer',
+            background: '#FEF3C7',
+            border: '1px solid #FDE68A',
+            borderRadius: '0.7rem', padding: '1rem 1.1rem',
           }}
         >
-          Start Batch Review
-        </button>
-      </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', fontWeight: 800, color: '#92400E' }}>
+            <AlertTriangle size={14} />
+            Awaiting resubmission
+          </div>
+          <p style={{ margin: '0.4rem 0 0', fontSize: '0.78rem', lineHeight: 1.55, color: '#92400E' }}>
+            {counts.resubmit_requested} student{counts.resubmit_requested === 1 ? ' has' : 's have'} been asked to resubmit.
+          </p>
+        </div>
+      )}
     </div>
   );
 };
@@ -425,9 +751,8 @@ const StatCard: React.FC<{
   label: string;
   value: string;
   sub?: React.ReactNode;
-  progress?: number;
   icon?: React.ReactNode;
-}> = ({ label, value, sub, progress, icon }) => (
+}> = ({ label, value, sub, icon }) => (
   <div
     style={{
       background: 'white', border: '1px solid #E2E8F0',
@@ -439,38 +764,8 @@ const StatCard: React.FC<{
       {icon}
     </div>
     <div style={{ fontSize: '1.85rem', fontWeight: 800, color: '#0F172A', marginTop: '0.35rem' }}>{value}</div>
-    {progress !== undefined && (
-      <div style={{ marginTop: '0.5rem', height: 6, background: '#E2E8F0', borderRadius: 3, overflow: 'hidden' }}>
-        <div style={{ height: '100%', width: `${progress}%`, background: 'var(--primary)', borderRadius: 3 }} />
-      </div>
-    )}
     {sub && (
       <div style={{ marginTop: '0.5rem', fontSize: '0.78rem', color: '#64748B' }}>{sub}</div>
     )}
   </div>
-);
-
-const PageBtn: React.FC<{
-  onClick?: () => void;
-  disabled?: boolean;
-  active?: boolean;
-  children: React.ReactNode;
-}> = ({ onClick, disabled, active, children }) => (
-  <button
-    onClick={onClick}
-    disabled={disabled}
-    style={{
-      minWidth: 30, height: 30, padding: '0 0.5rem',
-      borderRadius: '0.4rem',
-      background: active ? 'var(--primary)' : 'white',
-      color: active ? 'white' : '#334155',
-      border: '1px solid', borderColor: active ? 'var(--primary)' : '#E2E8F0',
-      fontWeight: 600, fontSize: '0.78rem',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      opacity: disabled ? 0.4 : 1,
-      display: 'flex', alignItems: 'center', justifyContent: 'center',
-    }}
-  >
-    {children}
-  </button>
 );

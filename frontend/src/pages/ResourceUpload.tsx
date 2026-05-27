@@ -3,9 +3,10 @@ import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   Upload, FileText, ChevronRight, ChevronLeft, Pencil, Send, Save,
   Paperclip, X, FileImage, FileType2, File as FileIcon, Loader2,
-  ArrowRight, Check,
+  ArrowRight, Check, Folder, FolderPlus, Plus,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
+import { PdfFrame } from '../components/ui/PdfFrame';
 import { useResources } from '../lib/resources/ResourcesContext';
 import type {
   Resource, ResourceAttachment, ResourceKind,
@@ -16,7 +17,6 @@ type Stage = 'form' | 'preview';
 type Step = 1 | 2 | 3;
 
 const ACCEPT = '.pdf,.doc,.docx,.png,.jpg,.jpeg,.ppt,.pptx,.zip';
-const MAX_TOTAL_MB = 25;
 
 const fmtBytes = (n: number): string => {
   if (n < 1024) return `${n} B`;
@@ -67,18 +67,22 @@ const errorText: React.CSSProperties = {
 /*  Form state                                                                */
 /* -------------------------------------------------------------------------- */
 
+type FolderMode = 'existing' | 'new';
+
 interface FormState {
   title: string;
   description: string;
   dueDate: string;
   maxMarks: string;
-  unit: string;
+  folderMode: FolderMode;
+  folder: string;          // chosen / typed folder name (acts as `unit` on backend)
   /** New files queued for upload. */
   pendingFiles: File[];
 }
 
 const emptyForm = (): FormState => ({
-  title: '', description: '', dueDate: '', maxMarks: '', unit: '', pendingFiles: [],
+  title: '', description: '', dueDate: '', maxMarks: '',
+  folderMode: 'new', folder: '', pendingFiles: [],
 });
 
 /* -------------------------------------------------------------------------- */
@@ -91,10 +95,20 @@ export const ResourceUpload: React.FC = () => {
   const initialKind: ResourceKind = type === 'notes' ? 'notes' : 'assignment';
 
   const {
-    divisions, subjects, divisionId, subjectId,
+    divisions, subjects, divisionId, subjectId, items,
     getItem, createItem, updateItem, addFiles, removeFile, publish,
     draftId, setDraftId,
   } = useResources();
+
+  // Distinct folder names already used in this division+subject (by this teacher).
+  const existingFolders = useMemo<string[]>(() => {
+    const set = new Set<string>();
+    for (const it of items) {
+      const u = (it.unit ?? '').trim();
+      if (u) set.add(u);
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [items]);
 
   const [stage, setStage] = useState<Stage>('form');
   const [step, setStep] = useState<Step>(1);
@@ -110,12 +124,14 @@ export const ResourceUpload: React.FC = () => {
     const existing = getItem(draftId);
     if (!existing) return;
     setKind(existing.kind);
+    const draftFolder = (existing.unit ?? '').trim();
     setForm({
       title: existing.title,
       description: existing.description,
       dueDate: existing.dueDate ? existing.dueDate.slice(0, 10) : '',
       maxMarks: existing.maxMarks !== undefined ? String(existing.maxMarks) : '',
-      unit: existing.unit ?? '',
+      folderMode: draftFolder ? 'existing' : 'new',
+      folder: draftFolder,
       pendingFiles: [],
     });
   }, [draftId, getItem]);
@@ -163,9 +179,6 @@ export const ResourceUpload: React.FC = () => {
     }
   };
 
-  const pendingBytes   = form.pendingFiles.reduce((a, f) => a + f.size, 0);
-  const uploadedBytes  = draft?.attachments.reduce((a, x) => a + x.size, 0) ?? 0;
-  const totalBytes     = pendingBytes + uploadedBytes;
   const totalAttachments = (draft?.attachments.length ?? 0) + form.pendingFiles.length;
 
   const validateStep = (s: Step): boolean => {
@@ -178,10 +191,14 @@ export const ResourceUpload: React.FC = () => {
     }
 
     if (s === 2) {
-      if (totalAttachments === 0) e.attachments = 'Attach at least one file';
-      if (totalBytes > MAX_TOTAL_MB * 1024 * 1024) {
-        e.attachments = `Attachments exceed ${MAX_TOTAL_MB} MB total`;
+      if (!form.folder.trim()) {
+        e.folder = form.folderMode === 'existing'
+          ? 'Pick a folder'
+          : 'Type a folder name';
+      } else if (form.folder.trim().length > 120) {
+        e.folder = 'Folder name is too long';
       }
+      if (totalAttachments === 0) e.attachments = 'Add at least one file';
     }
 
     if (s === 3) {
@@ -200,13 +217,14 @@ export const ResourceUpload: React.FC = () => {
     setServerError(null);
     setBusy(true);
     try {
+      const folderName = form.folder.trim() || undefined;
       if (editing && draft) {
         await updateItem(draft._id, {
           title: form.title.trim(),
           description: form.description.trim(),
           dueDate: kind === 'assignment' ? form.dueDate : undefined,
           maxMarks: kind === 'assignment' && form.maxMarks ? Number(form.maxMarks) : undefined,
-          unit:    kind === 'notes' ? (form.unit.trim() || undefined) : undefined,
+          unit:    folderName,
         });
         if (form.pendingFiles.length > 0) {
           await addFiles(draft._id, form.pendingFiles);
@@ -223,7 +241,7 @@ export const ResourceUpload: React.FC = () => {
         description: form.description.trim(),
         dueDate:  kind === 'assignment' ? form.dueDate : undefined,
         maxMarks: kind === 'assignment' && form.maxMarks ? Number(form.maxMarks) : undefined,
-        unit:     kind === 'notes' ? (form.unit.trim() || undefined) : undefined,
+        unit:     folderName,
         files: form.pendingFiles,
       });
       setDraftId(created._id);
@@ -237,13 +255,15 @@ export const ResourceUpload: React.FC = () => {
     }
   };
 
+  const lastStep: Step = kind === 'assignment' ? 3 : 2;
+
   const goNext = async () => {
     if (!validateStep(step)) return;
-    if (step < 3) {
+    if (step < lastStep) {
       setStep((step + 1) as Step);
       return;
     }
-    // Step 3 → persist + jump to Preview.
+    // Last step → persist + jump to Preview.
     const id = await persist();
     if (id) setStage('preview');
   };
@@ -334,7 +354,7 @@ export const ResourceUpload: React.FC = () => {
       )}
 
       {stage === 'form' ? (
-        <WizardLayout step={step}>
+        <WizardLayout step={step} kind={kind}>
           {step === 1 && (
             <BasicInfoStep
               form={form}
@@ -347,9 +367,12 @@ export const ResourceUpload: React.FC = () => {
           )}
           {step === 2 && (
             <FileUploadStep
+              kind={kind}
               form={form}
               errors={errors}
               uploadedAttachments={draft?.attachments ?? []}
+              existingFolders={existingFolders}
+              update={update}
               onFiles={onFiles}
               removePending={removePending}
               removeUploaded={removeUploaded}
@@ -357,6 +380,7 @@ export const ResourceUpload: React.FC = () => {
               onBack={goBack}
               onSaveDraft={handleSaveDraft}
               busy={busy}
+              isLast={kind === 'notes'}
             />
           )}
           {step === 3 && (
@@ -387,68 +411,79 @@ export const ResourceUpload: React.FC = () => {
 /*  Wizard frame (3-dot stepper + max-width centered content)                  */
 /* -------------------------------------------------------------------------- */
 
-const STEPS: { idx: Step; label: string }[] = [
-  { idx: 1, label: 'Basic Info' },
-  { idx: 2, label: 'File Upload' },
-  { idx: 3, label: 'Settings' },
-];
+const STEPS_BY_KIND: Record<ResourceKind, { idx: Step; label: string }[]> = {
+  assignment: [
+    { idx: 1, label: 'Details' },
+    { idx: 2, label: 'Files' },
+    { idx: 3, label: 'Settings' },
+  ],
+  notes: [
+    { idx: 1, label: 'Details' },
+    { idx: 2, label: 'Files' },
+  ],
+};
 
-const WizardLayout: React.FC<{ step: Step; children: React.ReactNode }> = ({ step, children }) => (
-  <div style={{ maxWidth: 880, margin: '0 auto' }}>
-    {/* Stepper */}
-    <div
-      style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-        gap: '0.85rem', margin: '0.25rem 0 2.25rem',
-      }}
-    >
-      {STEPS.map((s, i) => {
-        const done = step > s.idx;
-        const active = step === s.idx;
-        return (
-          <React.Fragment key={s.idx}>
-            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}>
-              <div
-                style={{
-                  width: 44, height: 44, borderRadius: '0.65rem',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  background: active ? 'var(--primary)' : done ? '#DBEAFE' : '#F1F5F9',
-                  color: active ? 'white' : done ? 'var(--primary)' : '#94A3B8',
-                  fontWeight: 800, fontSize: '0.95rem',
-                  boxShadow: active ? '0 6px 14px rgba(13, 138, 188, 0.25)' : undefined,
-                  transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
-                }}
-              >
-                {done ? <Check size={18} /> : s.idx}
+const WizardLayout: React.FC<{ step: Step; kind: ResourceKind; children: React.ReactNode }> = ({
+  step, kind, children,
+}) => {
+  const steps = STEPS_BY_KIND[kind];
+  return (
+    <div style={{ maxWidth: 880, margin: '0 auto' }}>
+      {/* Stepper */}
+      <div
+        style={{
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          gap: '0.85rem', margin: '0.25rem 0 2.25rem',
+        }}
+      >
+        {steps.map((s, i) => {
+          const done = step > s.idx;
+          const active = step === s.idx;
+          return (
+            <React.Fragment key={s.idx}>
+              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.45rem' }}>
+                <div
+                  style={{
+                    width: 44, height: 44, borderRadius: '0.65rem',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    background: active ? 'var(--primary)' : done ? '#DBEAFE' : '#F1F5F9',
+                    color: active ? 'white' : done ? 'var(--primary)' : '#94A3B8',
+                    fontWeight: 800, fontSize: '0.95rem',
+                    boxShadow: active ? '0 6px 14px rgba(13, 138, 188, 0.25)' : undefined,
+                    transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                  }}
+                >
+                  {done ? <Check size={18} /> : s.idx}
+                </div>
+                <span
+                  style={{
+                    fontSize: '0.86rem',
+                    fontWeight: active ? 700 : 500,
+                    color: active ? '#0F172A' : '#475569',
+                  }}
+                >
+                  {s.label}
+                </span>
               </div>
-              <span
-                style={{
-                  fontSize: '0.86rem',
-                  fontWeight: active ? 700 : 500,
-                  color: active ? '#0F172A' : '#475569',
-                }}
-              >
-                {s.label}
-              </span>
-            </div>
-            {i < STEPS.length - 1 && (
-              <div
-                style={{
-                  width: 80, height: 2,
-                  background: step > s.idx ? 'var(--primary)' : '#E2E8F0',
-                  borderRadius: 1, marginBottom: '1.6rem',
-                  transition: 'background 0.15s',
-                }}
-              />
-            )}
-          </React.Fragment>
-        );
-      })}
-    </div>
+              {i < steps.length - 1 && (
+                <div
+                  style={{
+                    width: 80, height: 2,
+                    background: step > s.idx ? 'var(--primary)' : '#E2E8F0',
+                    borderRadius: 1, marginBottom: '1.6rem',
+                    transition: 'background 0.15s',
+                  }}
+                />
+              )}
+            </React.Fragment>
+          );
+        })}
+      </div>
 
-    {children}
-  </div>
-);
+      {children}
+    </div>
+  );
+};
 
 /* -------------------------------------------------------------------------- */
 /*  Step 1 — Basic Info                                                       */
@@ -514,9 +549,12 @@ const BasicInfoStep: React.FC<BasicInfoStepProps> = ({
 /* -------------------------------------------------------------------------- */
 
 interface FileUploadStepProps {
+  kind: ResourceKind;
   form: FormState;
   errors: Record<string, string>;
   uploadedAttachments: ResourceAttachment[];
+  existingFolders: string[];
+  update: <K extends keyof FormState>(k: K, v: FormState[K]) => void;
   onFiles: (files: FileList | null) => void;
   removePending: (idx: number) => void;
   removeUploaded: (attId: string) => void;
@@ -524,74 +562,167 @@ interface FileUploadStepProps {
   onBack: () => void;
   onSaveDraft: () => void;
   busy: boolean;
+  isLast: boolean;
 }
 
 const FileUploadStep: React.FC<FileUploadStepProps> = ({
-  form, errors, uploadedAttachments, onFiles, removePending, removeUploaded, onNext, onBack, onSaveDraft, busy,
+  kind, form, errors, uploadedAttachments, existingFolders, update,
+  onFiles, removePending, removeUploaded, onNext, onBack, onSaveDraft, busy, isLast,
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const hasExisting = existingFolders.length > 0;
+
+  // If user picked "existing" but there are none yet, drop them back to "new".
+  useEffect(() => {
+    if (form.folderMode === 'existing' && !hasExisting) {
+      update('folderMode', 'new');
+    }
+  }, [form.folderMode, hasExisting, update]);
+
+  const setMode = (mode: FolderMode) => {
+    update('folderMode', mode);
+    update('folder', '');
+  };
+
+  const totalCount =
+    form.pendingFiles.length + uploadedAttachments.length;
 
   return (
     <Card>
       <CardHeader
-        title="Attachments"
-        subtitle="Drop in the files students need. They're uploaded to Cloudinary; URLs are kept in MongoDB."
+        title="Folder & Files"
+        subtitle="Pick a folder, then add the files you want to share."
       />
 
-      {/* Hidden input — sibling of the dropzone so programmatic clicks don't bubble back. */}
-      <input
-        ref={inputRef}
-        type="file"
-        multiple
-        accept={ACCEPT}
-        onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
-        style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
-        tabIndex={-1}
-        aria-hidden="true"
-      />
+      {/* ─── Folder picker ─────────────────────────────────────────────── */}
+      <div>
+        <label style={labelText}>Folder</label>
+        <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '0.55rem' }}>
+          <FolderToggle
+            active={form.folderMode === 'existing'}
+            disabled={!hasExisting}
+            onClick={() => setMode('existing')}
+            icon={<Folder size={14} />}
+            label="Existing folder"
+            hint={hasExisting ? undefined : 'none yet'}
+          />
+          <FolderToggle
+            active={form.folderMode === 'new'}
+            onClick={() => setMode('new')}
+            icon={<FolderPlus size={14} />}
+            label="New folder"
+          />
+        </div>
 
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={() => { if (!busy) inputRef.current?.click(); }}
-        onKeyDown={e => {
-          if (busy) return;
-          if (e.key === 'Enter' || e.key === ' ') {
-            e.preventDefault();
-            inputRef.current?.click();
-          }
-        }}
-        onDragOver={e => { e.preventDefault(); setDragOver(true); }}
-        onDragLeave={() => setDragOver(false)}
-        onDrop={e => {
-          e.preventDefault(); setDragOver(false);
-          if (!busy) onFiles(e.dataTransfer.files);
-        }}
-        style={{
-          cursor: busy ? 'wait' : 'pointer',
-          border: `1.5px dashed ${dragOver ? 'var(--primary)' : errors.attachments ? '#EF4444' : '#CBD5E1'}`,
-          borderRadius: '0.6rem',
-          padding: '2rem 1.5rem',
-          textAlign: 'center',
-          background: dragOver ? '#EFF6FF' : '#F8FAFC',
-          transition: 'background 0.15s, border-color 0.15s',
-          opacity: busy ? 0.6 : 1,
-        }}
-      >
-        <Paperclip size={24} color={dragOver ? 'var(--primary)' : '#64748B'} />
-        <div style={{ marginTop: '0.6rem', fontSize: '0.95rem', fontWeight: 600, color: '#0F172A' }}>
-          Click to choose files or drag &amp; drop
-        </div>
-        <div style={{ marginTop: '0.3rem', fontSize: '0.8rem', color: '#64748B' }}>
-          PDF, DOC, DOCX, PPT, PPTX, images, ZIP — up to {MAX_TOTAL_MB} MB total
-        </div>
+        {form.folderMode === 'existing' ? (
+          <select
+            value={form.folder}
+            onChange={e => update('folder', e.target.value)}
+            style={fieldStyle(!!errors.folder)}
+          >
+            <option value="">Select a folder…</option>
+            {existingFolders.map(name => (
+              <option key={name} value={name}>{name}</option>
+            ))}
+          </select>
+        ) : (
+          <input
+            type="text"
+            value={form.folder}
+            onChange={e => update('folder', e.target.value)}
+            placeholder="e.g. Unit 3 — Algorithms"
+            maxLength={120}
+            style={fieldStyle(!!errors.folder)}
+          />
+        )}
+        {errors.folder && <span style={errorText}>{errors.folder}</span>}
       </div>
-      {errors.attachments && <span style={errorText}>{errors.attachments}</span>}
+
+      {/* ─── Files ─────────────────────────────────────────────────────── */}
+      <div>
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            marginBottom: '0.5rem',
+          }}
+        >
+          <span style={labelText}>
+            Files{totalCount > 0 && ` · ${totalCount} added`}
+          </span>
+          {totalCount > 0 && (
+            <button
+              type="button"
+              onClick={() => { if (!busy) inputRef.current?.click(); }}
+              disabled={busy}
+              style={{
+                display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+                padding: '0.35rem 0.7rem',
+                background: 'white', color: 'var(--primary)',
+                border: '1px solid #BFDBFE', borderRadius: '0.45rem',
+                fontSize: '0.78rem', fontWeight: 600,
+                cursor: busy ? 'not-allowed' : 'pointer',
+              }}
+            >
+              <Plus size={12} /> Add more
+            </button>
+          )}
+        </div>
+
+        {/* Hidden input — sibling of the dropzone so programmatic clicks don't bubble back. */}
+        <input
+          ref={inputRef}
+          type="file"
+          multiple
+          accept={ACCEPT}
+          onChange={e => { onFiles(e.target.files); e.target.value = ''; }}
+          style={{ position: 'absolute', left: -9999, width: 1, height: 1, opacity: 0 }}
+          tabIndex={-1}
+          aria-hidden="true"
+        />
+
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => { if (!busy) inputRef.current?.click(); }}
+          onKeyDown={e => {
+            if (busy) return;
+            if (e.key === 'Enter' || e.key === ' ') {
+              e.preventDefault();
+              inputRef.current?.click();
+            }
+          }}
+          onDragOver={e => { e.preventDefault(); setDragOver(true); }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={e => {
+            e.preventDefault(); setDragOver(false);
+            if (!busy) onFiles(e.dataTransfer.files);
+          }}
+          style={{
+            cursor: busy ? 'wait' : 'pointer',
+            border: `1.5px dashed ${dragOver ? 'var(--primary)' : errors.attachments ? '#EF4444' : '#CBD5E1'}`,
+            borderRadius: '0.6rem',
+            padding: '1.5rem 1.25rem',
+            textAlign: 'center',
+            background: dragOver ? '#EFF6FF' : '#F8FAFC',
+            transition: 'background 0.15s, border-color 0.15s',
+            opacity: busy ? 0.6 : 1,
+          }}
+        >
+          <Paperclip size={22} color={dragOver ? 'var(--primary)' : '#64748B'} />
+          <div style={{ marginTop: '0.5rem', fontSize: '0.9rem', fontWeight: 600, color: '#0F172A' }}>
+            Click to pick files or drag &amp; drop
+          </div>
+          <div style={{ marginTop: '0.25rem', fontSize: '0.76rem', color: '#64748B' }}>
+            Pick multiple at once. Add more rounds before continuing.
+          </div>
+        </div>
+        {errors.attachments && <span style={errorText}>{errors.attachments}</span>}
+      </div>
 
       {/* Already-uploaded attachments (edit mode) */}
       {uploadedAttachments.length > 0 && (
-        <FileGroup label={`UPLOADED · ${uploadedAttachments.length}`} tone="green">
+        <FileGroup label={`Uploaded · ${uploadedAttachments.length}`} tone="green">
           {uploadedAttachments.map(a => (
             <AttachmentRow
               key={a._id}
@@ -608,7 +739,7 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
 
       {/* Pending (not-yet-uploaded) files */}
       {form.pendingFiles.length > 0 && (
-        <FileGroup label={`PENDING UPLOAD · ${form.pendingFiles.length}`} tone="amber">
+        <FileGroup label={`Ready to upload · ${form.pendingFiles.length}`} tone="amber">
           {form.pendingFiles.map((a, idx) => (
             <AttachmentRow
               key={`${a.name}-${idx}`}
@@ -630,13 +761,55 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
             <Save size={14} /> Save as Draft
           </SecondaryButton>
           <PrimaryButton onClick={onNext} disabled={busy}>
-            Next to Settings <ArrowRight size={14} />
+            {busy ? <Loader2 size={14} className="animate-spin" /> : null}
+            {isLast
+              ? (busy ? 'Uploading…' : 'Next to Preview')
+              : 'Next to Settings'}
+            {!busy && <ArrowRight size={14} />}
           </PrimaryButton>
         </div>
       </FooterButtons>
     </Card>
   );
 };
+
+/* -------------------------------------------------------------------------- */
+/*  Folder toggle button                                                       */
+/* -------------------------------------------------------------------------- */
+
+const FolderToggle: React.FC<{
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+  hint?: string;
+}> = ({ active, disabled, onClick, icon, label, hint }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    style={{
+      display: 'inline-flex', alignItems: 'center', gap: '0.4rem',
+      padding: '0.5rem 0.85rem',
+      borderRadius: '0.5rem',
+      border: `1px solid ${active ? 'var(--primary)' : '#E2E8F0'}`,
+      background: active ? '#EFF6FF' : 'white',
+      color: active ? 'var(--primary)' : disabled ? '#94A3B8' : '#334155',
+      fontSize: '0.82rem', fontWeight: 600,
+      cursor: disabled ? 'not-allowed' : 'pointer',
+      opacity: disabled ? 0.6 : 1,
+      transition: 'background 0.12s, border-color 0.12s, color 0.12s',
+    }}
+  >
+    {icon} {label}
+    {hint && (
+      <span style={{ marginLeft: '0.15rem', fontSize: '0.7rem', color: '#94A3B8', fontWeight: 500 }}>
+        ({hint})
+      </span>
+    )}
+  </button>
+);
 
 /* -------------------------------------------------------------------------- */
 /*  Step 3 — Settings                                                         */
@@ -911,11 +1084,7 @@ const PreviewStage: React.FC<{
         <div style={{ background: '#F1F5F9', height: 540, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           {active ? (
             active.mimeType === 'application/pdf' ? (
-              <iframe
-                title={active.name}
-                src={active.url}
-                style={{ width: '100%', height: '100%', border: 'none', background: 'white' }}
-              />
+              <PdfFrame src={active.url} title={active.name} />
             ) : active.mimeType.startsWith('image/') ? (
               <img
                 src={active.url}

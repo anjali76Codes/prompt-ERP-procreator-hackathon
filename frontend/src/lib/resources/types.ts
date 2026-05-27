@@ -43,3 +43,37 @@ export interface Resource {
   createdAt: string;
   updatedAt: string;
 }
+
+/* -------------------------- Submissions ---------------------------------- */
+
+export type SubmissionStatus = 'pending' | 'graded' | 'resubmit_requested';
+
+export interface PopulatedStudent {
+  _id: string;
+  name: string;
+  email: string;
+  rollNumber?: string;
+}
+
+export interface PopulatedResourceMini {
+  _id: string;
+  title: string;
+  kind: ResourceKind;
+  maxMarks?: number;
+  dueDate?: string;
+}
+
+export interface Submission {
+  _id: string;
+  resource: PopulatedResourceMini | string;
+  student:  PopulatedStudent | string;
+  status: SubmissionStatus;
+  attachments: ResourceAttachment[];
+  score?: number;
+  gradedAt?: string;
+  gradedBy?: string;
+  resubmitRequestedAt?: string;
+  submittedAt: string;
+  createdAt: string;
+  updatedAt: string;
+}
