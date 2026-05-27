@@ -10,7 +10,21 @@ export const createApp = (): express.Express => {
   const app = express();
 
   app.use(helmet());
-  app.use(cors({ origin: env.CORS_ORIGIN, credentials: true }));
+  // Support a comma-separated list in CORS_ORIGIN (or '*' for all).
+  const rawOrigins = env.CORS_ORIGIN || '';
+  const allowedOrigins = rawOrigins.trim() === '*'
+    ? ['*']
+    : rawOrigins.split(',').map(s => s.trim()).filter(Boolean);
+
+  app.use(cors({
+    origin: (origin, callback) => {
+      // Allow non-browser requests (e.g., server-to-server, curl)
+      if (!origin) return callback(null, true);
+      if (allowedOrigins.includes('*') || allowedOrigins.includes(origin)) return callback(null, true);
+      return callback(new Error(`CORS policy: origin ${origin} not allowed`));
+    },
+    credentials: true,
+  }));
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: true }));
   app.use(requestLogger);
