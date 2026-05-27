@@ -7,6 +7,7 @@ export const StudentQuizResult: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [attempt, setAttempt] = useState<any>(null);
+  const [quiz, setQuiz] = useState<any>(null);
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
@@ -19,6 +20,18 @@ export const StudentQuizResult: React.FC = () => {
         const res = await api.getAttempt(id);
         if (!mounted) return;
         setAttempt(res.attempt);
+
+        // The attempt only carries the quiz id — fetch the quiz for title + total marks.
+        const quizId = (res.attempt as any)?.quiz;
+        const quizRef = typeof quizId === 'object' ? quizId?._id : quizId;
+        if (quizRef) {
+          try {
+            const qRes = await api.getQuiz(quizRef);
+            if (mounted) setQuiz(qRes.quiz);
+          } catch (e) {
+            console.error('Failed to load quiz for result', e);
+          }
+        }
       } catch (err) {
         console.error('Failed to load attempt', err);
       } finally { setLoading(false); }
@@ -28,7 +41,9 @@ export const StudentQuizResult: React.FC = () => {
   }, [id]);
 
   const score = attempt?.score ?? null;
-  const total = attempt?.totalMarks ?? attempt?.quiz?.totalMarks ?? null;
+  const total = quiz?.questions
+    ? quiz.questions.reduce((s: number, q: any) => s + (q.points || 0), 0)
+    : (attempt?.totalMarks ?? null);
   const percentage = score != null && total ? Math.round((score / total) * 100) : null;
 
   return (
@@ -55,7 +70,7 @@ export const StudentQuizResult: React.FC = () => {
               <div style={{ borderTop: '1px solid #F1F5F9', paddingTop: '1rem' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div style={{ fontWeight: 700 }}>Quiz</div>
-                  <div>{attempt?.quiz?.title || attempt?.quizTitle || '-'}</div>
+                  <div>{quiz?.title || '-'}</div>
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between' }}>
                   <div style={{ fontWeight: 700 }}>Time Taken</div>

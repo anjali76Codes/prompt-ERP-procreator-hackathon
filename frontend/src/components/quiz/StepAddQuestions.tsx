@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React from 'react';
 import { Copy, Trash2, ChevronDown, ArrowRight, Plus } from 'lucide-react';
 import type { Question } from './types';
 
@@ -39,7 +39,7 @@ export const StepAddQuestions: React.FC<StepAddQuestionsProps> = ({
   editingMarks, setEditingMarks, editingDifficulty, setEditingDifficulty,
   editingText, setEditingText, editingOptions, setEditingOptions,
   editingCorrect, setEditingCorrect, editingExplanation, setEditingExplanation,
-  editingTopics, setEditingTopics, newTopicTag, setNewTopicTag,
+  editingTopics, newTopicTag, setNewTopicTag,
   totalMarks, numQuestions, loadQuestionToEditor, handleSaveQuestion,
   handleSaveAndNext, handleDuplicateQuestion, handleDeleteQuestion,
   handleAddTopicTag, handleRemoveTopicTag
@@ -225,7 +225,7 @@ export const StepAddQuestions: React.FC<StepAddQuestionsProps> = ({
         <div style={{ backgroundColor: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
           <span style={{ fontSize: '0.75rem', fontWeight: 800, color: '#64748B', textTransform: 'uppercase', letterSpacing: '0.5px' }}>QUESTION MAP</span>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.5rem' }}>
-            {questions.map((q, idx) => {
+            {questions.map((_q, idx) => {
               const isAct = editingIndex === idx;
               return (
                 <button 

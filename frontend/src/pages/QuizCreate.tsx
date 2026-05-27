@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
 import { CheckCircle, FileQuestion } from 'lucide-react';
@@ -12,96 +12,82 @@ import { StepReviewQuiz } from '../components/quiz/StepReviewQuiz';
 import { StepStudentPreview } from '../components/quiz/StepStudentPreview';
 import { StepPublishQuiz } from '../components/quiz/StepPublishQuiz';
 import type { Question } from '../components/quiz/types';
+import { fetchMyDivisions, fetchMySubjects } from '../lib/erp/api';
+import type { Division, Subject } from '../lib/erp/types';
+
+// A fresh, empty question template — used whenever the teacher adds a new question.
+const blankQuestion = (): Question => ({
+  id: Date.now(),
+  type: 'MCQ',
+  marks: 1,
+  difficulty: 'Easy',
+  text: '',
+  options: ['', '', '', ''],
+  correctOption: 0,
+  explanation: '',
+  topics: [],
+});
 
 export const QuizCreate: React.FC = () => {
   const navigate = useNavigate();
   const [currentStep, setCurrentStep] = useState<number>(1); // 1 to 6
 
-  // Step 1: Academic Context State
-  const [branch, setBranch] = useState('Computer Science');
-  const [semester, setSemester] = useState('Semester 3');
-  const [division, setDivision] = useState('Division A');
-  const [subject, setSubject] = useState('Java Programming');
-  const [selectedChapters, setSelectedChapters] = useState<string[]>(['Unit 4 - OOP Concepts']);
-  const [aiContext, setAiContext] = useState('Focus more on inheritance and polymorphism...');
+  // Real academic data assigned to the logged-in teacher (loaded from the API).
+  const [divisions, setDivisions] = useState<Division[]>([]);
+  const [subjects, setSubjects] = useState<Subject[]>([]);
+
+  // Step 1: Academic Context State — `division`/`subject` hold real Mongo ObjectIds.
+  const [branch, setBranch] = useState('');
+  const [semester, setSemester] = useState('');
+  const [division, setDivision] = useState('');
+  const [subject, setSubject] = useState('');
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
+  const [aiContext, setAiContext] = useState('');
 
   // Step 2: Quiz Setup State
-  const [quizTitle, setQuizTitle] = useState('Java OOP Quiz 1');
-  const [instructions, setInstructions] = useState(
-    'Total duration 20 mins, Negative marking applies to all sections. Ensure stable internet connection throughout the quiz session.'
-  );
+  const [quizTitle, setQuizTitle] = useState('');
+  const [instructions, setInstructions] = useState('');
   const [duration, setDuration] = useState('20');
-  const [totalMarks, setTotalMarks] = useState(25);
+  const [totalMarks, setTotalMarks] = useState(0);
   const [questionType, setQuestionType] = useState('Mixed');
-  const [numQuestions, setNumQuestions] = useState(15);
+  const [numQuestions, setNumQuestions] = useState(0);
   const [attempts, setAttempts] = useState('1');
-  const [negativeMarking, setNegativeMarking] = useState('0.25');
-  const [passingMarks, setPassingMarks] = useState(10);
+  const [negativeMarking, setNegativeMarking] = useState('None');
+  const [passingMarks, setPassingMarks] = useState(0);
   const [marksDistribution, setMarksDistribution] = useState('equal');
   const [availability, setAvailability] = useState('immediate');
 
-  // Step 3: Add Questions State
-  const [questions, setQuestions] = useState<Question[]>([
-    {
-      id: 1,
-      type: 'MCQ',
-      marks: 2,
-      difficulty: 'Easy',
-      text: 'What is polymorphism in Java?',
-      options: [
-        'A way to hide data',
-        'Allows one interface to have multiple implementations',
-        'Strict type checking',
-        'Automatic memory management'
-      ],
-      correctOption: 1,
-      explanation: 'Polymorphism allows one interface to have multiple implementations, commonly achieved through method overriding and overloading.',
-      topics: ['inheritance', 'encapsulation']
-    },
-    {
-      id: 2,
-      type: 'Descriptive',
-      marks: 5,
-      difficulty: 'Med',
-      text: 'Describe the process of cellular respiration and its significance in energy production for eukaryotic cells.',
-      options: [],
-      correctOption: 0,
-      explanation: 'Expected answer length: 150-200 words. Key terms: ATP, Mitochondria, Glycolysis.',
-      topics: ['biology', 'cellular']
-    },
-    {
-      id: 3,
-      type: 'MCQ',
-      marks: 3,
-      difficulty: 'Hard',
-      text: 'Which of the following best describes the Heisenberg Uncertainty Principle in quantum mechanics?',
-      options: [
-        'It is impossible to know both position and momentum of a particle simultaneously',
-        'Energy is quantized in discrete packets',
-        'Particles exhibit wave-like behavior under observation',
-        'Light speed is constant in all reference frames'
-      ],
-      correctOption: 0,
-      explanation: 'Heisenberg uncertainty principle states that position and momentum cannot be simultaneously measured with arbitrary precision.',
-      topics: ['physics', 'quantum']
-    }
-  ]);
+  // Step 3: Add Questions State — starts empty; questions are added manually.
+  const [questions, setQuestions] = useState<Question[]>([]);
+
+  // Load the teacher's real divisions & subjects so the quiz can be saved
+  // against valid ObjectIds (and pass the backend's "do you teach this?" check).
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const [divs, subs] = await Promise.all([fetchMyDivisions(), fetchMySubjects()]);
+        if (!mounted) return;
+        setDivisions(divs);
+        setSubjects(subs);
+      } catch (err) {
+        console.error('Failed to load divisions/subjects', err);
+        toast.error('Could not load your divisions/subjects');
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
 
   // Current editing question index in Step 3
   const [editingIndex, setEditingIndex] = useState<number>(0);
   const [editingType, setEditingType] = useState<'MCQ' | 'Descriptive'>('MCQ');
-  const [editingMarks, setEditingMarks] = useState<number>(2);
+  const [editingMarks, setEditingMarks] = useState<number>(1);
   const [editingDifficulty, setEditingDifficulty] = useState<'Easy' | 'Med' | 'Hard'>('Easy');
-  const [editingText, setEditingText] = useState('What is polymorphism in Java?');
-  const [editingOptions, setEditingOptions] = useState<string[]>([
-    'A way to hide data',
-    'Allows one interface to have multiple implementations',
-    'Strict type checking',
-    'Automatic memory management'
-  ]);
-  const [editingCorrect, setEditingCorrect] = useState<number>(1);
-  const [editingExplanation, setEditingExplanation] = useState('Polymorphism allows one interface to have multiple implementations, commonly achieved through method overriding and overloading.');
-  const [editingTopics, setEditingTopics] = useState<string[]>(['inheritance', 'encapsulation']);
+  const [editingText, setEditingText] = useState('');
+  const [editingOptions, setEditingOptions] = useState<string[]>(['', '', '', '']);
+  const [editingCorrect, setEditingCorrect] = useState<number>(0);
+  const [editingExplanation, setEditingExplanation] = useState('');
+  const [editingTopics, setEditingTopics] = useState<string[]>([]);
   const [newTopicTag, setNewTopicTag] = useState('');
 
   // Step 5: Student Preview State
@@ -149,17 +135,7 @@ export const QuizCreate: React.FC = () => {
       loadQuestionToEditor(nextIdx);
     } else {
       // Add a new empty question template
-      const newQ: Question = {
-        id: Date.now(),
-        type: 'MCQ',
-        marks: 2,
-        difficulty: 'Easy',
-        text: 'New Question Text',
-        options: ['Option A', 'Option B', 'Option C', 'Option D'],
-        correctOption: 0,
-        explanation: 'Add explanation here...',
-        topics: ['general']
-      };
+      const newQ: Question = blankQuestion();
       setQuestions([...questions, newQ]);
       setEditingIndex(nextIdx);
       setEditingType(newQ.type);
@@ -228,45 +204,73 @@ export const QuizCreate: React.FC = () => {
   };
 
   const publishQuiz = async () => {
+    // Validate the fields the backend actually requires.
+    if (!division) { toast.error('Please select a division'); setCurrentStep(1); return; }
+    if (!subject) { toast.error('Please select a subject'); setCurrentStep(1); return; }
+    if (!quizTitle.trim()) { toast.error('Please enter a quiz title'); setCurrentStep(2); return; }
+
+    const realQuestions = questions.filter(q => q.text.trim());
+    if (realQuestions.length === 0) { toast.error('Add at least one question'); setCurrentStep(3); return; }
+
+    // Map the editor's question model onto the backend schema.
+    //   MCQ        -> 'single' (one correct option)
+    //   Descriptive-> 'short'  (free-text, graded manually)
+    const mappedQuestions = [];
+    for (const q of realQuestions) {
+      if (q.type === 'MCQ') {
+        const filled = q.options
+          .map((text, idx) => ({ text: text.trim(), isCorrect: idx === q.correctOption }))
+          .filter(o => o.text !== '');
+        if (filled.length < 2) {
+          toast.error(`"${q.text.slice(0, 30)}…" needs at least 2 options`);
+          setCurrentStep(3);
+          return;
+        }
+        if (!filled.some(o => o.isCorrect)) {
+          toast.error(`Select the correct option for "${q.text.slice(0, 30)}…"`);
+          setCurrentStep(3);
+          return;
+        }
+        mappedQuestions.push({ text: q.text.trim(), type: 'single', points: q.marks, options: filled });
+      } else {
+        mappedQuestions.push({ text: q.text.trim(), type: 'short', points: q.marks, options: [] });
+      }
+    }
+
+    // `duration` may be 'Custom' from the setup step — guard the conversion.
+    const durationMinutes = Number(duration);
+    const timeLimitMinutes = Number.isFinite(durationMinutes) && durationMinutes > 0 ? durationMinutes : undefined;
+
+    const payload = {
+      title: quizTitle.trim(),
+      description: instructions.trim() || undefined,
+      division,
+      subject,
+      settings: {
+        ...(timeLimitMinutes ? { timeLimitMinutes } : {}),
+        ...(attempts === '1' ? { maxAttempts: 1 } : {}),
+        shuffleQuestions: false,
+      },
+      questions: mappedQuestions,
+    };
+
     try {
       const api = await import('../lib/quiz/api');
-      const payload = {
-        title: quizTitle,
-        instructions,
-        durationSeconds: Number(duration) * 60,
-        totalMarks,
-        attempts: Number(attempts),
-        negativeMarking: Number(negativeMarking),
-        passingMarks,
-        availability,
-        branch,
-        semester,
-        division,
-        subject,
-        selectedChapters,
-        aiContext,
-        questions: questions.map(q => ({
-          type: q.type,
-          text: q.text,
-          options: q.options || [],
-          correctOption: q.correctOption,
-          marks: q.marks,
-          difficulty: q.difficulty,
-          explanation: q.explanation,
-          topics: q.topics
-        }))
-      };
       const res = await api.createQuiz(payload);
       const resAny = res as any;
       const id = resAny?.quiz?._id || resAny?.quiz?.id;
-      if (id) {
+      if (!id) throw new Error('Server did not return a quiz id');
+
+      if (availability === 'immediate') {
         await api.publishQuiz(id);
+        toast.success(`Successfully published "${quizTitle}" to students!`);
+      } else {
+        toast.success(`Saved "${quizTitle}" as a draft.`);
       }
-      toast.success(`Successfully published "${quizTitle}" to students!`);
       navigate('/quizzes');
-    } catch (err) {
+    } catch (err: any) {
       console.error('Publish failed', err);
-      toast.error('Failed to publish quiz');
+      toast.error(err?.message || 'Failed to publish quiz');
     }
   };
 
@@ -401,6 +405,8 @@ export const QuizCreate: React.FC = () => {
         <div style={{ flex: 1, overflowY: 'auto' }}>
           {currentStep === 1 && (
             <StepAcademicContext
+              divisions={divisions}
+              subjects={subjects}
               branch={branch} setBranch={setBranch}
               semester={semester} setSemester={setSemester}
               division={division} setDivision={setDivision}
@@ -428,7 +434,21 @@ export const QuizCreate: React.FC = () => {
               onSaveDraft={() => toast.info('Draft saved successfully!')}
               onNext={() => {
                 setCurrentStep(3);
-                loadQuestionToEditor(0);
+                if (questions.length === 0) {
+                  const first = blankQuestion();
+                  setQuestions([first]);
+                  setEditingIndex(0);
+                  setEditingType(first.type);
+                  setEditingMarks(first.marks);
+                  setEditingDifficulty(first.difficulty);
+                  setEditingText(first.text);
+                  setEditingOptions([...first.options]);
+                  setEditingCorrect(first.correctOption);
+                  setEditingExplanation(first.explanation);
+                  setEditingTopics([...first.topics]);
+                } else {
+                  loadQuestionToEditor(0);
+                }
               }}
             />
           )}
@@ -489,7 +509,7 @@ export const QuizCreate: React.FC = () => {
               questionsCount={questions.length}
               branch={branch}
               semester={semester}
-              division={division}
+              division={divisions.find(d => d._id === division)?.name || ''}
               onBack={() => setCurrentStep(5)}
               onSaveDraft={() => toast.info('Draft saved successfully!')}
               onPublish={publishQuiz}

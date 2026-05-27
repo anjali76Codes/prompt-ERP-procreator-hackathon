@@ -4,6 +4,7 @@ export const createQuiz = (payload: unknown) => apiRequest<{ quiz: unknown }>('/
 export const updateQuiz = (id: string, payload: unknown) => apiRequest<{ quiz: unknown }>(`/quizzes/${id}`, { method: 'PATCH', body: payload });
 export const publishQuiz = (id: string) => apiRequest<{ quiz: unknown }>(`/quizzes/${id}/publish`, { method: 'POST' });
 export const unpublishQuiz = (id: string) => apiRequest<{ quiz: unknown }>(`/quizzes/${id}/unpublish`, { method: 'POST' });
+export const deleteQuiz = (id: string) => apiRequest<void>(`/quizzes/${id}`, { method: 'DELETE' });
 export const listQuizzes = (params = '') => apiRequest<{ total?: number; quizzes: unknown[] }>(`/quizzes${params ? '?' + params : ''}`);
 export const getQuiz = (id: string) => apiRequest<{ quiz: unknown }>(`/quizzes/${id}`);
 

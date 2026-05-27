@@ -36,7 +36,7 @@ export const StudentQuizDetails: React.FC = () => {
         const params = new URLSearchParams(location.search);
         let attemptId = params.get('attemptId');
 
-        let currentAttempt = null;
+        let currentAttempt: any = null;
 
         // If no attemptId, create new attempt
         if (!attemptId) {
@@ -46,7 +46,8 @@ export const StudentQuizDetails: React.FC = () => {
           attemptId = currentAttempt._id || currentAttempt.id;
         } else {
           // Fetch existing attempt
-          currentAttempt = await api.getAttempt(attemptId);
+          const attemptRes = await api.getAttempt(attemptId);
+          currentAttempt = attemptRes.attempt;
         }
 
         if (!mounted) return;
