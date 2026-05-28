@@ -9,7 +9,7 @@
  *   4. Bulk-publish OR per-row publish.
  */
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Sparkles, ChevronLeft, ChevronRight, Loader2, ClipboardCheck, Plus, Trash2,
@@ -80,7 +80,6 @@ export const AiGrading: React.FC = () => {
   const hasRubric = !!rubric?.criteria?.length;
 
   const proposedCount = review?.counts.proposed ?? 0;
-  const publishedCount = review?.counts.published ?? 0;
 
   const onRunAi = async () => {
     if (!id) return;

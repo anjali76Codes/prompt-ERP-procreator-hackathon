@@ -2,7 +2,6 @@ import React from 'react';
 import { Cpu, FileText, Lock } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { ChatPanel } from '../components/automation/ChatPanel';
-import { SavedWorkflows } from '../components/automation/SavedWorkflows';
 import { RecentActivityRail } from '../components/automation/RecentActivityRail';
 import { useAutomationEngine } from '../lib/automation/engine';
 import s from '../components/automation/Automation.module.css';
@@ -37,7 +36,6 @@ export const ChatInterface: React.FC = () => {
             <ChatPanel
               messages={engine.messages}
               split={false}
-              suggestedPrompts={engine.suggestedPrompts}
               onSend={engine.send}
               onPermissionResponse={engine.sendPermissionResponse}
               onInsightAction={() => engine.highlightStudents()}

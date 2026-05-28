@@ -6,7 +6,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  Download, ExternalLink, FileText, ImageIcon as ImgIcon, ArrowRight,
+  Download, FileText, ImageIcon as ImgIcon, ArrowRight,
 } from 'lucide-react';
 import type {
   ChatAttachment, ChatNavigate, ChatPermission, ChatTable,

@@ -52,14 +52,13 @@ const SLASH_COMMANDS: { command: string; description: string }[] = [
 interface Props {
   messages: ChatMessage[];
   split: boolean;
-  suggestedPrompts: readonly string[];
   onSend: (text: string, files?: File[]) => void;
   onPermissionResponse?: (messageId: string, pr: PermissionResponse) => void;
   onInsightAction?: (insight: ChatInsight) => void;
 }
 
 export const ChatPanel: React.FC<Props> = ({
-  messages, split, suggestedPrompts, onSend, onPermissionResponse, onInsightAction,
+  messages, split, onSend, onPermissionResponse, onInsightAction,
 }) => {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
