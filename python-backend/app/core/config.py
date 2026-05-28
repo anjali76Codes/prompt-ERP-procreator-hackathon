@@ -20,29 +20,58 @@ class Settings(BaseSettings):
     )
 
     # --- Server ----------------------------------------------------------
-    host: str = "0.0.0.0"
-    port: int = 8000
-    environment: Literal["development", "staging", "production"] = "development"
-    cors_origins: str = "http://localhost:5173"
+    host: str = Field(default="0.0.0.0", alias="HOST")
+    port: int = Field(default=8000, alias="PORT")
+    environment: Literal["development", "staging", "production"] = Field(
+        default="development",
+        alias="ENVIRONMENT",
+    )
+    cors_origins: str = Field(
+        default="http://localhost:5173",
+        alias="CORS_ORIGINS",
+    )
 
     # --- Logging ---------------------------------------------------------
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
-    log_json: bool = False
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
+        default="INFO",
+        alias="LOG_LEVEL",
+    )
+    log_json: bool = Field(default=False, alias="LOG_JSON")
 
     # --- Auth bridge -----------------------------------------------------
-    jwt_secret: str = Field(default="", description="Same secret as the Node backend")
-    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = "HS256"
+    jwt_secret: str = Field(
+        default="",
+        alias="JWT_SECRET",
+        description="Same secret as the Node backend",
+    )
+    jwt_algorithm: Literal["HS256", "HS384", "HS512"] = Field(
+        default="HS256",
+        alias="JWT_ALGORITHM",
+    )
 
     # --- Node backend ----------------------------------------------------
-    node_api_url: str = "http://localhost:5000/api"
+    node_api_url: str = Field(
+        default="http://localhost:3000/api",
+        alias="NODE_API_URL",
+    )
 
     # --- Google Gemini ---------------------------------------------------
-    gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
-    gemini_max_output_tokens: int = 4096
+    gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
+    gemini_model: str = Field(
+        default="gemini-2.0-flash",
+        alias="GEMINI_MODEL",
+    )
+    gemini_max_output_tokens: int = Field(
+        default=4096,
+        alias="GEMINI_MAX_OUTPUT_TOKENS",
+    )
+    gemini_temperature: float = Field(
+        default=0.1,
+        alias="GEMINI_TEMPERATURE",
+    )
 
     # --- MCP -------------------------------------------------------------
-    mcp_servers: str = ""
+    mcp_servers: str = Field(default="", alias="MCP_SERVERS")
 
     @field_validator("cors_origins")
     @classmethod
