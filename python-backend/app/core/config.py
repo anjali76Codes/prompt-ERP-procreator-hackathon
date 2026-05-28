@@ -60,9 +60,9 @@ class Settings(BaseSettings):
     # base URL that maps to that directory via FastAPI's StaticFiles mount.
     exports_dir: str = Field(default="exports", alias="EXPORTS_DIR")
     public_base_url: str = Field(
-        default="http://localhost:8000",
+        default="http://localhost:8000/python-app",
         alias="PUBLIC_BASE_URL",
-        description="External base URL the agent uses when linking to /exports/*.",
+        description="External base URL (including /python-app prefix) the agent uses when linking to /exports/*.",
     )
 
     # --- Google Gemini ---------------------------------------------------

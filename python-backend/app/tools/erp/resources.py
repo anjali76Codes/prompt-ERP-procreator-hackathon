@@ -103,8 +103,9 @@ async def create_resource(
     """Create a notes or assignment resource for a division + subject.
 
     Resolve `division_id` and `subject_id` first via list_divisions/list_subjects.
-    - `kind="assignment"` REQUIRES `due_date` (format YYYY-MM-DD); notes do not.
-    - `max_marks` only makes sense for assignments.
+    - `kind="assignment"` REQUIRES `due_date` (format YYYY-MM-DD) AND
+      `max_marks` (total marks). Ask the user for these if they didn't give
+      them — do NOT guess defaults.
     - `unit` is a free-text section/chapter label (e.g. "Chapter 3", "Unit II").
     - Set `attach_files=True` to upload the file(s) the user attached to this
       message. If the user said they're uploading a file but none is attached,
@@ -113,6 +114,14 @@ async def create_resource(
     Returns the created resource (status defaults to "draft" — call
     publish_resource to make it visible to students).
     """
+    if kind == "assignment" and (max_marks is None or max_marks <= 0):
+        return {
+            "status": "error",
+            "message": (
+                "Total marks (max_marks) is required for assignments. Ask the "
+                "teacher: \"What's the total marks for this assignment?\""
+            ),
+        }
     ctx = current_run_context()
     body: dict[str, Any] = {
         "kind": kind,
@@ -132,6 +141,22 @@ async def create_resource(
     data = await ctx.erp().post_multipart("/resources", data=body, files=files)
     resource = data.get("resource", data) if isinstance(data, dict) else data
     rid = str(resource.get("_id") or resource.get("id")) if isinstance(resource, dict) else None
+
+    # Surface the just-uploaded files in chat so the teacher gets a visual
+    # confirmation of WHAT was uploaded — same UX as the "Your PDF file is
+    # ready" card you'd see in other AI chat apps.
+    if isinstance(resource, dict):
+        for att in (resource.get("attachments") or []):
+            url = att.get("url")
+            if not url:
+                continue
+            ctx.add_attachment(
+                name=att.get("name") or "file",
+                url=url,
+                mime_type=att.get("mimeType"),
+                size_bytes=att.get("size"),
+            )
+
     if rid:
         if kind == "assignment":
             ctx.set_navigate("View on assignments list", "/assignments/list")
