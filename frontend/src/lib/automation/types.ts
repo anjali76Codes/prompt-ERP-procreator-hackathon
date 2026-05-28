@@ -12,6 +12,9 @@
  * ========================================================================= */
 
 import type { ReactNode } from 'react';
+import type {
+  ChatAttachment, ChatNavigate, ChatPermission, ChatTable,
+} from './agentApi';
 
 /* ---------- Chat ---------------------------------------------------------- */
 
@@ -31,6 +34,16 @@ export interface ChatMessage {
   insight?: ChatInsight;
   isLoading?: boolean;
   createdAt: number;
+  // Structured side-channels — rendered below the message bubble.
+  tables?: ChatTable[];
+  attachments?: ChatAttachment[];
+  navigate?: ChatNavigate | null;
+  permission?: ChatPermission | null;
+  /** Once the user has answered a permission dropdown for this message, lock it. */
+  permissionAnswered?: boolean;
+  /** The pipeline of tool calls the agent ran to produce this reply — shown
+   *  inline under the AI bubble rather than in a separate column. */
+  workflow?: Workflow;
 }
 
 /* ---------- Workflows ----------------------------------------------------- */

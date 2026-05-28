@@ -11,13 +11,16 @@ from typing import AsyncIterator
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 
 from app.api import agents as agents_api
+from app.api import grading as grading_api
 from app.api import health as health_api
 from app.api import tools as tools_api
 from app.api import workflows as workflows_api
 from app.core.config import get_settings
 from app.core.errors import unhandled_exception_handler
+from app.core.exports import exports_root
 from app.core.logging import configure_logging, get_logger
 from app.tools.builtin import register_builtin_tools
 
@@ -72,10 +75,20 @@ def create_app() -> FastAPI:
         )
         return response
 
+    # Serve agent-produced files (PDFs, generated assignments, exports). The
+    # directory is created lazily on first write — pre-create it here so the
+    # mount never fails on startup.
+    app.mount(
+        "/exports",
+        StaticFiles(directory=str(exports_root())),
+        name="exports",
+    )
+
     app.include_router(health_api.router)
     app.include_router(agents_api.router)
     app.include_router(workflows_api.router)
     app.include_router(tools_api.router)
+    app.include_router(grading_api.router)
 
     app.add_exception_handler(Exception, unhandled_exception_handler)
     return app

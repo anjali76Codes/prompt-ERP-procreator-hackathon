@@ -119,3 +119,27 @@ class ErpClient:
         # Form values must be strings for multipart/form-data.
         form = {k: str(v) for k, v in data.items() if v is not None}
         return await self._request("POST", path, data=form, files=files or None)
+
+    async def get_bytes(
+        self, path: str, params: dict[str, Any] | None = None
+    ) -> tuple[bytes, str]:
+        """Fetch a binary response (e.g. a streamed PDF). Returns (bytes, content_type)."""
+        url = f"{self._base_url}/{path.lstrip('/')}"
+        clean_params = {k: v for k, v in (params or {}).items() if v is not None}
+        log.info("erp request (bytes)", path=path)
+        try:
+            async with httpx.AsyncClient(timeout=self._timeout) as client:
+                resp = await client.get(
+                    url, headers=self._auth_headers, params=clean_params or None
+                )
+        except httpx.HTTPError as e:
+            raise bad_request(f"Could not reach ERP backend at {url}: {e}") from e
+
+        if resp.status_code >= 400:
+            try:
+                body = resp.json()
+            except Exception:  # noqa: BLE001
+                body = resp.text
+            log.warning("erp error (bytes)", status=resp.status_code, body=body)
+            raise ErpApiError(resp.status_code, body)
+        return resp.content, resp.headers.get("content-type", "application/octet-stream")

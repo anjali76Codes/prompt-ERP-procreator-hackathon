@@ -44,6 +44,7 @@ async def chat(
         principal=principal,
         token=_bearer_token(request),
         files=[],
+        permission_response=body.permission_response,
     )
 
 

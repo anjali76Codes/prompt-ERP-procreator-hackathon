@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { Submission, type SubmissionDoc } from '../models/Submission';
 import { Resource } from '../models/Resource';
 import { Student } from '../models/Student';
+import { Notification } from '../models/Notification';
 import { BadRequest, Forbidden, NotFound } from '../utils/http-errors';
 import {
   uploadBufferToCloudinary, destroyManyCloudinaryFiles,
@@ -186,4 +187,72 @@ export const requestResubmission = async (
   doc.gradedBy = undefined;
   await doc.save();
   return doc.populate(POPULATE_FIELDS);
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Teacher: notify students who haven't submitted yet                         */
+/* -------------------------------------------------------------------------- */
+
+export const notifyNonSubmitters = async (
+  resourceId: string,
+  teacherId: string,
+  message?: string,
+): Promise<{ resourceId: string; notified: number; studentIds: string[] }> => {
+  const resource = await Resource.findById(resourceId).populate('subject', 'name code');
+  if (!resource) throw NotFound('Assignment not found');
+  if (resource.kind !== 'assignment') {
+    throw BadRequest('Only assignments have submissions');
+  }
+  if (resource.teacher.toString() !== teacherId) {
+    throw Forbidden('Only the owner can notify on this assignment');
+  }
+
+  const submittedIds = await Submission
+    .find({ resource: resourceId })
+    .distinct('student');
+  const submittedSet = new Set(submittedIds.map(id => id.toString()));
+
+  const studentsInDivision = await Student
+    .find({ divisionRef: resource.division })
+    .select('_id');
+
+  const nonSubmitterIds = studentsInDivision
+    .map(s => s._id)
+    .filter(id => !submittedSet.has(id.toString()));
+
+  if (nonSubmitterIds.length === 0) {
+    return { resourceId, notified: 0, studentIds: [] };
+  }
+
+  const subjectName = resource.subject && typeof resource.subject === 'object'
+    && 'name' in resource.subject
+    ? (resource.subject as { name: string }).name
+    : 'your subject';
+
+  const dueStr = resource.dueDate
+    ? new Date(resource.dueDate).toISOString().slice(0, 10)
+    : 'soon';
+
+  const title = `Reminder: submit "${resource.title}"`;
+  const body = message?.trim() || (
+    `You haven't submitted "${resource.title}" for ${subjectName}. `
+    + `The deadline is ${dueStr}. Please submit as soon as possible.`
+  );
+
+  const docs = nonSubmitterIds.map(rid => ({
+    sender: new Types.ObjectId(teacherId),
+    recipient: rid,
+    kind: 'reminder' as const,
+    title,
+    body,
+    link: `/student/assignments/${resourceId}`,
+    meta: { resourceId, kind: 'assignment_reminder' },
+  }));
+  await Notification.insertMany(docs);
+
+  return {
+    resourceId,
+    notified: nonSubmitterIds.length,
+    studentIds: nonSubmitterIds.map(id => id.toString()),
+  };
 };

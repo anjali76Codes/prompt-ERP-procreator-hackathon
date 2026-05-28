@@ -21,6 +21,7 @@ import { Resources } from './pages/Resources';
 import { ResourceUpload } from './pages/ResourceUpload';
 import { ResourcesList } from './pages/ResourcesList';
 import { ReviewSubmissions } from './pages/ReviewSubmissions';
+import { AiGrading } from './pages/AiGrading';
 import { StudentResources } from './pages/StudentResources';
 import { QuizCreate } from './pages/QuizCreate';
 import { TeacherQuizOverview } from './pages/TeacherQuizOverview';
@@ -133,6 +134,9 @@ const App = () => {
             } />
             <Route path="/assignments/list/:id/review" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><ReviewSubmissions /></ProtectedRoute>
+            } />
+            <Route path="/assignments/list/:id/ai-grade" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><AiGrading /></ProtectedRoute>
             } />
             <Route path="/assignments/notes" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><ResourcesList kind="notes" /></ProtectedRoute>

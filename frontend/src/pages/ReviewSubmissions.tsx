@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
   Clock, CheckCircle2, AlertTriangle, RotateCcw, TrendingUp, ChevronRight,
   Search, ClipboardList, ChevronLeft, Eye, Loader2, Save, X, Download,
+  Sparkles,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { PdfFrame } from '../components/ui/PdfFrame';
@@ -116,9 +117,22 @@ export const ReviewSubmissions: React.FC = () => {
         </>
       }
       pageActions={
-        <button className="btn btn-secondary btn-sm" onClick={() => navigate('/assignments/list')}>
-          <ChevronLeft size={14} /> Back to list
-        </button>
+        <div style={{ display: 'flex', gap: '0.4rem' }}>
+          <button
+            onClick={() => navigate(`/assignments/list/${id}/ai-grade`)}
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+              padding: '0.5rem 0.9rem', borderRadius: '0.5rem',
+              background: '#7C3AED', color: 'white',
+              border: 'none', fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+            }}
+          >
+            <Sparkles size={14} /> Grade with AI
+          </button>
+          <button className="btn btn-secondary btn-sm" onClick={() => navigate('/assignments/list')}>
+            <ChevronLeft size={14} /> Back to list
+          </button>
+        </div>
       }
     >
       {loadError && (

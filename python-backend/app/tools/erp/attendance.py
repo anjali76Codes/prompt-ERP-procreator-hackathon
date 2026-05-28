@@ -13,6 +13,7 @@ from langchain_core.tools import tool
 from pydantic import BaseModel, Field
 
 from app.agents.run_context import current_run_context
+from app.core.exports import save_export
 from app.tools.erp._util import erp_safe
 
 Status = Literal["present", "absent", "late", "excused"]
@@ -35,12 +36,13 @@ async def list_lectures(
     `mine=True` for the caller's own lectures. Use this to find the lecture to
     mark attendance for. Returns {id, date, startTime, room, division, subject}.
     """
+    ctx = current_run_context()
     params = {
         "divisionId": division_id,
         "date": date,
         "mine": "1" if mine else None,
     }
-    data = await current_run_context().erp().get("/lectures", params=params)
+    data = await ctx.erp().get("/lectures", params=params)
     rows = data.get("lectures", []) if isinstance(data, dict) else []
     out = []
     for lec in rows:
@@ -58,6 +60,21 @@ async def list_lectures(
                 if isinstance(lec.get("subject"), dict)
                 else lec.get("subject"),
             }
+        )
+    if out:
+        ctx.add_table(
+            title=f"Lectures ({len(out)})",
+            columns=["Date", "Time", "Subject", "Division", "Room"],
+            rows=[
+                [
+                    (r.get("date") or "")[:10] if r.get("date") else "—",
+                    r.get("startTime") or "—",
+                    r.get("subject") or "—",
+                    r.get("division") or "—",
+                    r.get("room") or "—",
+                ]
+                for r in out
+            ],
         )
     return out
 
@@ -147,3 +164,45 @@ async def student_attendance(
             f"/students/{student_id}/attendance", params=params
         )
     return await current_run_context().erp().get("/me/attendance", params=params)
+
+
+@tool
+@erp_safe
+async def export_division_attendance_pdf(
+    division_id: str, student_ids: Optional[list[str]] = None
+) -> dict[str, Any]:
+    """Generate a division attendance report as a PDF. Optionally scope to a
+    subset of `student_ids`. Returns a download `url` the teacher can click."""
+    ctx = current_run_context()
+    params: dict[str, Any] = {}
+    if student_ids:
+        params["studentIds"] = ",".join(student_ids)
+    content, _ = await ctx.erp().get_bytes(
+        f"/divisions/{division_id}/attendance/report.pdf", params=params
+    )
+    info = save_export(content, filename=f"attendance-report-{division_id}.pdf")
+    ctx.add_attachment(
+        name=info["filename"],
+        url=info["url"],
+        mime_type="application/pdf",
+        size_bytes=int(info.get("sizeBytes") or 0),
+    )
+    ctx.set_navigate("Open attendance analytics", "/attendance/analytics")
+    return info
+
+
+@tool
+@erp_safe
+async def export_lecture_roster_pdf(lecture_id: str) -> dict[str, Any]:
+    """Generate a single-lecture attendance roster PDF (who was present/absent/
+    late/excused for that class). Returns a `url` the teacher can click."""
+    ctx = current_run_context()
+    content, _ = await ctx.erp().get_bytes(f"/lectures/{lecture_id}/report.pdf")
+    info = save_export(content, filename=f"lecture-roster-{lecture_id}.pdf")
+    ctx.add_attachment(
+        name=info["filename"],
+        url=info["url"],
+        mime_type="application/pdf",
+        size_bytes=int(info.get("sizeBytes") or 0),
+    )
+    return info

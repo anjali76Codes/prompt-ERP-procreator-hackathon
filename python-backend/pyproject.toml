@@ -29,6 +29,10 @@ dependencies = [
     "mcp>=1.0.0",
     # Browser automation (Playwright) — for "open my fee receipt" style flows
     "playwright>=1.48.0",
+    # PDF text extraction (read teacher's notes / student submissions)
+    "pypdf>=5.0.0",
+    # PDF generation (auto-generated assignment / rubric breakdown exports)
+    "reportlab>=4.2.0",
 ]
 
 [project.optional-dependencies]

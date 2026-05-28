@@ -7,6 +7,8 @@ import lectureRoutes from './lecture.routes';
 import attendanceRoutes from './attendance.routes';
 import resourceRoutes from './resource.routes';
 import submissionRoutes from './submission.routes';
+import gradingRoutes from './grading.routes';
+import chatSessionRoutes from './chat-session.routes';
 import automationRoutes from './automation.routes';
 import notificationRoutes from './notification.routes';
 import quizRoutes from './quiz.routes';
@@ -28,6 +30,8 @@ router.use('/', lectureRoutes);
 router.use('/', attendanceRoutes);
 router.use('/', resourceRoutes);
 router.use('/', submissionRoutes);
+router.use('/', gradingRoutes);
+router.use('/', chatSessionRoutes);
 router.use('/', quizRoutes);
 
 router.use('/', automationRoutes);
