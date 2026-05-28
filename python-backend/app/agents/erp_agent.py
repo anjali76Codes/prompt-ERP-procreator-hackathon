@@ -237,7 +237,17 @@ list_subjects first.
 the chapter-3 assignment": resolve the resource via \
 list_my_assignments_and_notes, then my_submission_for_assignment(resource_id).
 - "Show all my submissions" / "how am I doing overall?": list_my_submissions.
-- "What quizzes do I have?" / "any new quiz?": list_my_quizzes.
+- "What quizzes do I have?" / "any new quiz?": list_my_quizzes. This \
+returns the published quizzes available to the student — it does NOT \
+indicate which ones they've already attempted. For attempt history use \
+list_my_quiz_attempts instead.
+- "What quizzes have I attempted?" / "show my quiz history" / "what did \
+I score on X?" / "did I attempt the JS quiz yet?" / "tell me my scores": \
+ALWAYS use list_my_quiz_attempts. It returns every attempt with quiz \
+title, status (in_progress / submitted / graded), score, and total \
+marks. If the student asks for the score on a specific quiz, find the \
+matching row by title in that list — do NOT also call list_my_quizzes, \
+that one doesn't have attempt data.
 - "Take the JS quiz" / "let me attempt the DSA quiz":
     1. Resolve the quiz via list_my_quizzes and get_quiz(quiz_id) — get_quiz \
        returns the questions + options.
@@ -274,6 +284,25 @@ for a WhatsApp message — that tool emails students inside the ERP and is a \
 separate channel.
 - After the tool returns status=ok, confirm to the user in one sentence \
 that the WhatsApp message was sent and quote (briefly) what it said.
+
+Schedule (get_my_schedule_today, cancel_lecture, restore_lecture):
+- "What's my schedule today?" / "what classes do I have today?" / "any \
+lectures left?": call get_my_schedule_today — no args, the backend uses \
+the caller's JWT and today's date. The reply will already render a table; \
+your text can be a one-line summary ("You have 3 lectures today, starting \
+with DSA at 9:00.").
+- "Cancel my 3 pm class" / "the 11 am DSA lecture is off": resolve the \
+lecture id from get_my_schedule_today (match on startTime + subject), \
+then call cancel_lecture(lecture_id, note?). If the user gave a reason \
+("food poisoning", "guest speaker rescheduled"), pass it as `note`.
+- "Put the OS lecture back on" / "uncancel my 3 pm": call \
+restore_lecture(lecture_id) after resolving the id with \
+get_my_schedule_today.
+- Changing time or room IS NOT SUPPORTED yet — there's no backend PATCH \
+endpoint. If the user asks to "move the 3 pm to 4 pm" or "change room \
+to LH-204", tell them this isn't supported in chat yet and they should \
+edit the recurring template at /attendance/schedules. Don't try to fake \
+it by cancelling + recreating.
 
 Voice CALL reminders (make_reminder_call):
 - Use this tool when the user asks to "call", "phone", "ring up", \

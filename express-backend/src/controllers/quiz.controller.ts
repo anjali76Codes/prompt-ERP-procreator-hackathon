@@ -77,6 +77,28 @@ export const listStudentQuizzes = asyncHandler(async (req: Request, res: Respons
   res.json({ quizzes });
 });
 
+export const getStudentQuiz = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.auth) throw Unauthorized();
+  const id = req.params.id;
+  if (!id) throw BadRequest('Quiz id required');
+  const quiz = await svc.findQuizForStudent(id, req.auth.sub);
+  res.json({ quiz });
+});
+
+export const getStudentAttempt = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.auth) throw Unauthorized();
+  const id = req.params.id;
+  if (!id) throw BadRequest('Attempt id required');
+  const attempt = await svc.findAttemptForStudent(id, req.auth.sub);
+  res.json({ attempt });
+});
+
+export const listStudentAttempts = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.auth) throw Unauthorized();
+  const attempts = await svc.listAttemptsForStudent(req.auth.sub);
+  res.json({ attempts });
+});
+
 /* ---------------- Student endpoints ---------------- */
 export const startAttempt = asyncHandler(async (req: Request, res: Response) => {
   if (!req.auth) throw Unauthorized();

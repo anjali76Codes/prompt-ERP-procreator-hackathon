@@ -10,6 +10,12 @@ export const getQuiz = (id: string) => apiRequest<{ quiz: any }>(`/quizzes/${id}
 
 // Student endpoints
 export const listStudentQuizzes = () => apiRequest<{ quizzes: any[] }>(`/student/quizzes`);
+// Student-safe quiz fetch — backend strips `option.isCorrect` and checks
+// that the caller's division matches the quiz.
+export const getStudentQuiz = (id: string) => apiRequest<{ quiz: any }>(`/student/quizzes/${id}`);
+// Student-safe attempt fetch — only returns the attempt if the caller owns it.
+export const getStudentAttempt = (id: string) =>
+  apiRequest<{ attempt: any }>(`/student/quizzes/attempts/${id}`);
 export const startAttempt = (quizId: string) => apiRequest<{ attempt: any }>(`/quizzes/${quizId}/start`, { method: 'POST' });
 export const submitAttempt = (payload: unknown) => apiRequest<{ attempt: any }>(`/quizzes/submit`, { method: 'POST', body: payload });
 

@@ -3,10 +3,14 @@ import { useNavigate, useParams, Navigate } from 'react-router-dom';
 import {
   Upload, FileText, ChevronRight, ChevronLeft, Pencil, Send, Save,
   Paperclip, X, FileImage, FileType2, File as FileIcon, Loader2,
-  ArrowRight, Check, Folder, FolderPlus, Plus,
+  ArrowRight, Check, Folder, FolderPlus, Plus, Eye,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { PdfFrame } from '../components/ui/PdfFrame';
+import {
+  AttachmentPreviewModal,
+  type PreviewAttachment,
+} from '../components/ui/AttachmentPreviewModal';
 import { useResources } from '../lib/resources/ResourcesContext';
 import type {
   Resource, ResourceAttachment, ResourceKind,
@@ -570,7 +574,18 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
 }) => {
   const inputRef = React.useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
+  const [preview, setPreview] = useState<PreviewAttachment | null>(null);
   const hasExisting = existingFolders.length > 0;
+
+  // Object URLs created for local (pending) file previews are revoked on
+  // close to avoid memory leaks. Cloudinary URLs (uploaded files) are
+  // plain https and don't need cleanup.
+  const closePreview = () => {
+    if (preview && preview.url.startsWith('blob:')) {
+      URL.revokeObjectURL(preview.url);
+    }
+    setPreview(null);
+  };
 
   // If user picked "existing" but there are none yet, drop them back to "new".
   useEffect(() => {
@@ -588,6 +603,7 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
     form.pendingFiles.length + uploadedAttachments.length;
 
   return (
+    <>
     <Card>
       <CardHeader
         title="Folder & Files"
@@ -730,6 +746,7 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
               type={a.mimeType}
               href={a.url}
               onRemove={() => removeUploaded(a._id)}
+              onPreview={() => setPreview({ name: a.name, url: a.url, mimeType: a.mimeType })}
               cloud
             />
           ))}
@@ -746,6 +763,11 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
               size={a.size}
               type={a.type}
               onRemove={() => removePending(idx)}
+              onPreview={() => setPreview({
+                name: a.name,
+                url: URL.createObjectURL(a),
+                mimeType: a.type,
+              })}
             />
           ))}
         </FileGroup>
@@ -769,6 +791,15 @@ const FileUploadStep: React.FC<FileUploadStepProps> = ({
         </div>
       </FooterButtons>
     </Card>
+
+    {preview && (
+      <AttachmentPreviewModal
+        title={preview.name}
+        attachments={[preview]}
+        onClose={closePreview}
+      />
+    )}
+    </>
   );
 };
 
@@ -1004,9 +1035,10 @@ interface AttachmentRowProps {
   href?: string;
   cloud?: boolean;
   onRemove: () => void;
+  onPreview?: () => void;
 }
 
-const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, cloud, onRemove }) => (
+const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, cloud, onRemove, onPreview }) => (
   <div
     style={{
       display: 'flex', alignItems: 'center', gap: '0.65rem',
@@ -1036,6 +1068,22 @@ const AttachmentRow: React.FC<AttachmentRowProps> = ({ name, size, type, href, c
       )}
       <div style={{ fontSize: '0.74rem', color: '#64748B' }}>{fmtBytes(size)}{cloud && ' · Cloudinary'}</div>
     </div>
+    {onPreview && (
+      <button
+        type="button"
+        onClick={onPreview}
+        style={{
+          background: 'transparent', border: '1px solid #E2E8F0',
+          borderRadius: '0.45rem', padding: '0.3rem',
+          cursor: 'pointer', color: 'var(--primary)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+        }}
+        aria-label="Preview attachment"
+        title="Preview"
+      >
+        <Eye size={13} />
+      </button>
+    )}
     <button
       type="button"
       onClick={onRemove}

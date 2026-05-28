@@ -13,6 +13,9 @@ import { AttendanceAnalytics } from './pages/AttendanceAnalytics';
 import { AttendanceStudents } from './pages/AttendanceStudents';
 import { AttendanceSchedules } from './pages/AttendanceSchedules';
 import { Placeholder } from './pages/Placeholder';
+import { Announcements } from './pages/Announcements';
+import { ClassNotify } from './pages/ClassNotify';
+import { GradeBatch } from './pages/GradeBatch';
 import { Profile } from './pages/Profile';
 import { PendingApproval } from './pages/PendingApproval';
 import { AttendanceProvider } from './lib/AttendanceContext';
@@ -117,10 +120,20 @@ const App = () => {
             <Route path="/finance"    element={<ProtectedRoute><Placeholder title="Finance" /></ProtectedRoute>} />
             <Route path="/reports"    element={<ProtectedRoute><Placeholder title="Reports" /></ProtectedRoute>} />
             <Route path="/directory"  element={<ProtectedRoute><Placeholder title="Directory" /></ProtectedRoute>} />
-            <Route path="/curriculum" element={<ProtectedRoute><Placeholder title="Curriculum" /></ProtectedRoute>} />
-            <Route path="/research"   element={<ProtectedRoute><Placeholder title="Research" /></ProtectedRoute>} />
-            <Route path="/homework"   element={<ProtectedRoute><Placeholder title="Homework" /></ProtectedRoute>} />
-            <Route path="/support"    element={<ProtectedRoute><Placeholder title="Support" /></ProtectedRoute>} />
+
+            {/* Teacher quick actions (dashboard) */}
+            <Route path="/announcements" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><Announcements /></ProtectedRoute>
+            } />
+            <Route path="/grade-batch" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><GradeBatch /></ProtectedRoute>
+            } />
+            <Route path="/reports" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><Placeholder title="Reports" /></ProtectedRoute>
+            } />
+            <Route path="/notify" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><ClassNotify /></ProtectedRoute>
+            } />
 
             {/* Assignments & Notes — teachers only */}
             <Route path="/assignments" element={

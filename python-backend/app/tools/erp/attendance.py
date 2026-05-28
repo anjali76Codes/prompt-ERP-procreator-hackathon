@@ -34,7 +34,8 @@ async def list_lectures(
 ) -> list[dict[str, Any]]:
     """List lectures, optionally filtered by division, a date (YYYY-MM-DD), or
     `mine=True` for the caller's own lectures. Use this to find the lecture to
-    mark attendance for. Returns {id, date, startTime, room, division, subject}.
+    mark attendance for. Returns {id, date, startTime, room, division, subject,
+    status}.
     """
     ctx = current_run_context()
     params = {
@@ -53,6 +54,7 @@ async def list_lectures(
                 "startTime": lec.get("startTime"),
                 "endTime": lec.get("endTime"),
                 "room": lec.get("room"),
+                "status": lec.get("status"),
                 "division": (lec.get("division") or {}).get("code")
                 if isinstance(lec.get("division"), dict)
                 else lec.get("division"),
@@ -64,7 +66,7 @@ async def list_lectures(
     if out:
         ctx.add_table(
             title=f"Lectures ({len(out)})",
-            columns=["Date", "Time", "Subject", "Division", "Room"],
+            columns=["Date", "Time", "Subject", "Division", "Room", "Status"],
             rows=[
                 [
                     (r.get("date") or "")[:10] if r.get("date") else "—",
@@ -72,6 +74,7 @@ async def list_lectures(
                     r.get("subject") or "—",
                     r.get("division") or "—",
                     r.get("room") or "—",
+                    r.get("status") or "scheduled",
                 ]
                 for r in out
             ],

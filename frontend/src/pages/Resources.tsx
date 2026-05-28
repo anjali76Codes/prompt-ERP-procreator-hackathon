@@ -563,7 +563,14 @@ const statusPill = (status: Resource['status']) => {
   return { label: 'DRAFT', cls: 'warning' as const };
 };
 
-const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items }) => (
+const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items }) => {
+  const navigate = useNavigate();
+  // Pick the list page that matches the kind of the freshest item. If the
+  // most recent activity is a notes upload, "Full history" should land
+  // on the notes list; otherwise default to assignments.
+  const fullHistoryPath =
+    items[0]?.kind === 'notes' ? '/assignments/notes' : '/assignments/list';
+  return (
   <div className="card" style={{ padding: '1.5rem' }}>
     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '1rem', gap: '1rem' }}>
       <div>
@@ -574,7 +581,11 @@ const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items })
           {divisionLabel ? `Recent Activity in ${divisionLabel}` : 'Recent Activity'}
         </h3>
       </div>
-      <button className="alert-row-cta" style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem' }}>
+      <button
+        onClick={() => navigate(fullHistoryPath)}
+        className="alert-row-cta"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '0.35rem', cursor: 'pointer' }}
+      >
         View Full History <ArrowRight size={12} />
       </button>
     </div>
@@ -632,5 +643,6 @@ const RecentActivity: React.FC<RecentActivityProps> = ({ divisionLabel, items })
       </div>
     )}
   </div>
-);
+  );
+};
 

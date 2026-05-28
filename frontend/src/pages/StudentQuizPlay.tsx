@@ -60,8 +60,9 @@ export const StudentQuizPlay: React.FC = () => {
       try {
         const api = await import('../lib/quiz/api');
 
-        // Fetch quiz
-        const qRes = await api.getQuiz(id);
+        // Fetch quiz — student-safe variant (server strips correct-answer
+        // flags and checks division match).
+        const qRes = await api.getStudentQuiz(id);
         const q: any = qRes.quiz;
 
         const mapped: LiveQuestion[] = (q.questions || []).map((qq: any) => ({
@@ -85,7 +86,7 @@ export const StudentQuizPlay: React.FC = () => {
 
         let attempt: any;
         if (existingAttemptId) {
-          const aRes = await api.getAttempt(existingAttemptId);
+          const aRes = await api.getStudentAttempt(existingAttemptId);
           attempt = aRes.attempt;
         } else {
           const startRes = await api.startAttempt(id);

@@ -25,8 +25,9 @@ export const StudentQuizDetails: React.FC = () => {
 
         const api = await import('../lib/quiz/api');
 
-        // Load quiz
-        const quizRes = await api.getQuiz(id);
+        // Load quiz — student-safe variant (no correct-answer leak, division
+        // match enforced server-side).
+        const quizRes = await api.getStudentQuiz(id);
 
         if (!mounted) return;
 
@@ -46,7 +47,7 @@ export const StudentQuizDetails: React.FC = () => {
           attemptId = currentAttempt?._id || currentAttempt?.id;
         } else {
           // Fetch existing attempt
-          const attemptRes = await api.getAttempt(attemptId);
+          const attemptRes = await api.getStudentAttempt(attemptId);
           currentAttempt = attemptRes.attempt;
         }
 

@@ -324,6 +324,48 @@ class QuizAnswer(BaseModel):
 
 @tool
 @erp_safe
+async def list_my_quiz_attempts() -> list[dict[str, Any]]:
+    """List EVERY quiz attempt the calling STUDENT has made, newest
+    first, with the quiz title, status (in_progress / submitted /
+    graded / abandoned), score, and total marks per attempt.
+
+    Use this for "what quizzes have I attempted?", "show my quiz
+    history", "tell me my scores", "did I attempt the JS quiz yet?".
+
+    If the student asks for the score on a specific quiz, find the
+    matching row by title here — no need for an extra lookup.
+    """
+    ctx = current_run_context()
+    data = await ctx.erp().get("/student/quizzes/attempts")
+    rows = data.get("attempts", []) if isinstance(data, dict) else []
+
+    def _fmt_score(r: dict[str, Any]) -> str:
+        score = r.get("score")
+        total = r.get("totalMarks") or 0
+        if score is None:
+            return "—" if r.get("status") == "in_progress" else "pending"
+        return f"{score} / {total}" if total else str(score)
+
+    if rows:
+        ctx.add_table(
+            title=f"Your quiz attempts ({len(rows)})",
+            columns=["Quiz", "Subject", "Status", "Submitted", "Score"],
+            rows=[
+                [
+                    r.get("quizTitle") or "—",
+                    r.get("subjectLabel") or "—",
+                    (r.get("status") or "—").replace("_", " "),
+                    (r.get("submittedAt") or "")[:10] if r.get("submittedAt") else "—",
+                    _fmt_score(r),
+                ]
+                for r in rows
+            ],
+        )
+    return rows
+
+
+@tool
+@erp_safe
 async def submit_quiz_attempt(
     quiz_id: str,
     answers: list[QuizAnswer],

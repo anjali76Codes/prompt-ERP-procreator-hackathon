@@ -10,7 +10,10 @@
     "typecheck": "tsc --noEmit",
     "seed:admin": "ts-node-dev --transpile-only src/scripts/seed-admin.ts",
     "seed:demo": "ts-node-dev --transpile-only src/scripts/seed-demo.ts",
-    "seed:quizzes": "ts-node-dev --transpile-only src/scripts/seed-quizzes.ts"
+    "seed:quizzes": "ts-node-dev --transpile-only src/scripts/seed-quizzes.ts",
+    "seed:announcements": "ts-node-dev --transpile-only src/scripts/seed-announcements.ts",
+    "seed:grade-batch": "ts-node-dev --transpile-only src/scripts/seed-grade-batch.ts",
+    "seed:attendance": "ts-node-dev --transpile-only src/scripts/seed-attendance.ts"
   },
   "keywords": [],
   "author": "",
