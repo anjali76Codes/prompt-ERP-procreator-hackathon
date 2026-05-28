@@ -61,14 +61,33 @@ export const ChatPanel: React.FC<Props> = ({
       <div className={s.chatList}>
         {messages.length === 0 && (
           <div className={s.emptyState}>
-            <div className={s.emptyAvatar}><Sparkles size={30} /></div>
-            <h2 className={s.emptyTitle}>What can I automate for you?</h2>
-            <p className={s.emptyHint}>
-              Describe any academic workflow — attendance reports, grade analysis, personalized student
-              letters — and I'll build a live pipeline for you.
-            </p>
+            <div className={s.emptyHero}>
+              <div className={s.emptyAvatar}><Sparkles size={30} /></div>
+              <div>
+                <h2 className={s.emptyTitle}>Welcome to Campus Orchestrator</h2>
+                <p className={s.emptyHint}>
+                  Kick off a workflow with a prompt or choose one of the suggested operations below.
+                </p>
+              </div>
+            </div>
+
+            <div className={s.emptyCardGrid}>
+              {suggestedPrompts.slice(0, 3).map(prompt => (
+                <button
+                  key={prompt}
+                  type="button"
+                  className={s.emptyActionCard}
+                  onClick={() => submit(undefined, prompt)}
+                >
+                  <span className={s.emptyActionLabel}>RUN OPERATION</span>
+                  <span className={s.emptyActionTitle}>{prompt}</span>
+                  <span className={s.emptyActionMeta}>Instantly launch a smart assistant flow</span>
+                </button>
+              ))}
+            </div>
+
             <div className={s.suggestionRow}>
-              {suggestedPrompts.map(prompt => (
+              {suggestedPrompts.slice(3).map(prompt => (
                 <button
                   key={prompt}
                   className={s.suggestionChip}

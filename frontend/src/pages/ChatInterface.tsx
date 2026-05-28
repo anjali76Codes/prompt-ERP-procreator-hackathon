@@ -62,11 +62,11 @@ export const ChatInterface: React.FC = () => {
               </button>
             </div>
 
-            <SavedWorkflows
+            {/* <SavedWorkflows
               templates={engine.templates}
               split={split}
               onRun={engine.runTemplate}
-            />
+            /> */}
           </div>
 
           <div className={`${s.workflowCol} ${split ? s.visible : s.hidden}`}>
