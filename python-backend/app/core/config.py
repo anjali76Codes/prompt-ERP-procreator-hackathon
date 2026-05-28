@@ -83,6 +83,18 @@ class Settings(BaseSettings):
     # --- MCP -------------------------------------------------------------
     mcp_servers: str = Field(default="", alias="MCP_SERVERS")
 
+    # --- WhatsApp (n8n webhook bridge) -----------------------------------
+    whatsapp_webhook_url: str = Field(
+        default="http://98.89.30.17:5678/webhook/whatsapp-message",
+        alias="WHATSAPP_WEBHOOK_URL",
+        description="n8n webhook that relays {to, message} to WhatsApp.",
+    )
+    whatsapp_default_to: str = Field(
+        default="whatsapp:+918767902526",
+        alias="WHATSAPP_DEFAULT_TO",
+        description="Single recipient for the demo — every send_whatsapp_message call uses this.",
+    )
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_origins(cls, v: str) -> str:
