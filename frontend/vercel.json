@@ -8,12 +8,12 @@
       "destination": "http://18.234.50.17:3000/api/:path*"
     },
      {
-      "source": "/:path((?!api).*)",
-      "destination": "http://18.234.50.17:8000/:path*"
+      "source": "/python-app/:path*",
+      "destination": "http://18.234.50.17:8000/python-app/:path*"
     },
     {
-      "source": "/(.*)",
-      "destination": "/"
+            "source": "/(.*)",
+            "destination": "/"
     }
   ]
 }
