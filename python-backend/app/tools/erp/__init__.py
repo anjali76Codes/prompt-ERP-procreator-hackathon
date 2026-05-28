@@ -17,6 +17,7 @@ from app.tools.erp import (
     resources,
     student,
     submissions,
+    vapi_call,
     whatsapp,
 )
 
@@ -73,4 +74,6 @@ def erp_tools() -> list[BaseTool]:
         student.submit_quiz_attempt,
         # WhatsApp (out-of-band notifications via n8n).
         whatsapp.send_whatsapp_message,
+        # Vapi (outbound voice reminder calls).
+        vapi_call.make_reminder_call,
     ]

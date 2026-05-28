@@ -95,6 +95,32 @@ class Settings(BaseSettings):
         description="Single recipient for the demo — every send_whatsapp_message call uses this.",
     )
 
+    # --- Vapi (outbound voice calls) -------------------------------------
+    vapi_base_url: str = Field(
+        default="https://api.vapi.ai",
+        alias="VAPI_BASE_URL",
+    )
+    vapi_api_key: str = Field(
+        default="",
+        alias="VAPI_API_KEY",
+        description="Vapi private API key — used as Bearer auth on POST /call.",
+    )
+    vapi_assistant_id: str = Field(
+        default="",
+        alias="VAPI_ASSISTANT_ID",
+        description="Pre-configured Vapi assistant that handles the call script.",
+    )
+    vapi_phone_number_id: str = Field(
+        default="",
+        alias="VAPI_PHONE_NUMBER_ID",
+        description="Vapi-managed phone number to dial OUT from.",
+    )
+    vapi_default_to: str = Field(
+        default="+918767902526",
+        alias="VAPI_DEFAULT_TO",
+        description="E.164 number to dial — same as WhatsApp demo recipient, sans the `whatsapp:` prefix.",
+    )
+
     @field_validator("cors_origins")
     @classmethod
     def _strip_origins(cls, v: str) -> str:
