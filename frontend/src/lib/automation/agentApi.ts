@@ -17,11 +17,51 @@ export interface AgentToolStep {
   args: Record<string, unknown>;
 }
 
+export interface ChatTable {
+  title?: string;
+  columns: string[];
+  rows: (string | number | null)[][];
+}
+
+export interface ChatAttachment {
+  name: string;
+  url: string;
+  mimeType?: string;
+  sizeBytes?: number;
+}
+
+export interface ChatNavigate {
+  label: string;
+  path: string;
+}
+
+export interface ChatPermissionOption {
+  value: string;
+  label: string;
+  description?: string;
+}
+
+export interface ChatPermission {
+  prompt: string;
+  options: ChatPermissionOption[];
+  context: Record<string, unknown>;
+}
+
+export interface PermissionResponse {
+  value: string;
+  context: Record<string, unknown>;
+  overrideScore?: number;
+}
+
 export interface AgentChatResponse {
   reply: string;
   sessionId: string;
   toolsUsed: string[];
   steps: AgentToolStep[];
+  tables?: ChatTable[];
+  attachments?: ChatAttachment[];
+  navigate?: ChatNavigate | null;
+  permission?: ChatPermission | null;
 }
 
 export class AgentApiError extends Error {
@@ -65,11 +105,16 @@ const handle = async (res: Response): Promise<AgentChatResponse> => {
 export const sendChat = async (
   message: string,
   sessionId: string,
+  permissionResponse?: PermissionResponse,
 ): Promise<AgentChatResponse> => {
   const res = await fetch(`${AI_BASE}/agents/chat`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...authHeader() },
-    body: JSON.stringify({ message, sessionId }),
+    body: JSON.stringify({
+      message,
+      sessionId,
+      ...(permissionResponse ? { permissionResponse } : {}),
+    }),
   });
   return handle(res);
 };

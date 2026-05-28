@@ -1,20 +1,65 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Sparkles, MoreVertical, Loader2, Cpu, User, Paperclip, Image as ImageIcon, Send, TrendingUp, X,
+  ClipboardList, BellRing, CloudUpload, Mic,
 } from 'lucide-react';
 import s from './Automation.module.css';
 import type { ChatMessage, ChatInsight } from '../../lib/automation/types';
+import type { PermissionResponse } from '../../lib/automation/agentApi';
+import { ChatExtras } from './ChatExtras';
+import { InlinePipeline } from './InlinePipeline';
+
+/* ------------------------------------------------------------------ *
+ *  Landing-screen prompt cards (shown when chat is empty).
+ *  Each card categorises the kind of action so a teacher knows what
+ *  to expect even before the agent runs.
+ * ------------------------------------------------------------------ */
+interface PromptCard {
+  category: string;
+  icon: React.ReactNode;
+  prompt: string;
+  short: string;
+}
+
+const PROMPT_CARDS: PromptCard[] = [
+  {
+    category: 'RUN AGENT',
+    icon: <ClipboardList size={18} />,
+    prompt: 'Generate a 5-question quiz on binary trees for TE-A in Data Structures',
+    short: 'Generate a quiz for TE-A',
+  },
+  {
+    category: 'RUN WORKFLOW',
+    icon: <BellRing size={18} />,
+    prompt: 'Notify the students who haven\'t submitted the OS assignment yet',
+    short: 'Notify non-submitters',
+  },
+  {
+    category: 'RUN OPERATION',
+    icon: <CloudUpload size={18} />,
+    prompt: 'Upload Chapter 3 notes for TE-A in Data Structures',
+    short: 'Upload notes for a class',
+  },
+];
+
+/** Slash-command hints rendered under the input. */
+const SLASH_COMMANDS: { command: string; description: string }[] = [
+  { command: '/quiz',   description: 'generate assessment' },
+  { command: '/notify', description: 'broadcast message' },
+  { command: '/export', description: 'download analytics' },
+];
 
 interface Props {
   messages: ChatMessage[];
   split: boolean;
   suggestedPrompts: readonly string[];
   onSend: (text: string, files?: File[]) => void;
+  onPermissionResponse?: (messageId: string, pr: PermissionResponse) => void;
   onInsightAction?: (insight: ChatInsight) => void;
 }
 
 export const ChatPanel: React.FC<Props> = ({
-  messages, split, suggestedPrompts, onSend, onInsightAction,
+  messages, split, suggestedPrompts, onSend, onPermissionResponse, onInsightAction,
 }) => {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
@@ -60,41 +105,62 @@ export const ChatPanel: React.FC<Props> = ({
 
       <div className={s.chatList}>
         {messages.length === 0 && (
-          <div className={s.emptyState}>
-            <div className={s.emptyHero}>
-              <div className={s.emptyAvatar}><Sparkles size={30} /></div>
-              <div>
-                <h2 className={s.emptyTitle}>Welcome to Campus Orchestrator</h2>
-                <p className={s.emptyHint}>
-                  Kick off a workflow with a prompt or choose one of the suggested operations below.
-                </p>
-              </div>
+          <div style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', padding: '2rem 1rem', textAlign: 'center',
+            gap: '0.75rem', minHeight: '100%',
+          }}>
+            <div style={{
+              width: 60, height: 60, borderRadius: '50%',
+              background: 'var(--primary)', color: 'white',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              boxShadow: '0 4px 12px rgba(37, 99, 235, 0.25)',
+            }}>
+              <Sparkles size={28} />
             </div>
+            <h2 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: '#0F172A' }}>
+              How can I assist your department today?
+            </h2>
+            <p style={{ margin: 0, fontSize: '0.83rem', color: '#64748B', maxWidth: 460 }}>
+              CampusOS Orchestrator is ready to automate your academic workflows.
+            </p>
 
-            <div className={s.emptyCardGrid}>
-              {suggestedPrompts.slice(0, 3).map(prompt => (
+            <div style={{
+              display: 'grid',
+              gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+              gap: '0.75rem',
+              width: '100%', maxWidth: 720,
+              marginTop: '0.75rem',
+            }}>
+              {PROMPT_CARDS.map(card => (
                 <button
-                  key={prompt}
+                  key={card.category}
                   type="button"
-                  className={s.emptyActionCard}
-                  onClick={() => submit(undefined, prompt)}
+                  onClick={() => submit(undefined, card.prompt)}
+                  style={{
+                    display: 'flex', flexDirection: 'column', alignItems: 'flex-start',
+                    gap: '0.5rem', textAlign: 'left',
+                    background: '#FAFBFC', border: '1px solid #E2E8F0',
+                    borderRadius: '0.65rem', padding: '0.9rem',
+                    cursor: 'pointer',
+                    transition: 'background 0.15s, border-color 0.15s',
+                  }}
+                  onMouseEnter={e => {
+                    e.currentTarget.style.background = '#EFF6FF';
+                    e.currentTarget.style.borderColor = '#BFDBFE';
+                  }}
+                  onMouseLeave={e => {
+                    e.currentTarget.style.background = '#FAFBFC';
+                    e.currentTarget.style.borderColor = '#E2E8F0';
+                  }}
                 >
-                  <span className={s.emptyActionLabel}>RUN OPERATION</span>
-                  <span className={s.emptyActionTitle}>{prompt}</span>
-                  <span className={s.emptyActionMeta}>Instantly launch a smart assistant flow</span>
-                </button>
-              ))}
-            </div>
-
-            <div className={s.suggestionRow}>
-              {suggestedPrompts.slice(3).map(prompt => (
-                <button
-                  key={prompt}
-                  className={s.suggestionChip}
-                  onClick={() => submit(undefined, prompt)}
-                  type="button"
-                >
-                  {prompt}
+                  <span style={{ color: 'var(--primary)' }}>{card.icon}</span>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A', lineHeight: 1.35 }}>
+                    {card.short}
+                  </span>
+                  <span style={{ fontSize: '0.65rem', fontWeight: 800, color: '#64748B', letterSpacing: '0.7px' }}>
+                    {card.category}
+                  </span>
                 </button>
               ))}
             </div>
@@ -147,6 +213,27 @@ export const ChatPanel: React.FC<Props> = ({
                     </div>
                   </div>
                 )}
+                {!msg.isLoading && (
+                  <div style={{
+                    marginLeft: 'calc(1.75rem + 0.75rem)',
+                    display: 'flex', flexDirection: 'column', gap: '0.6rem',
+                  }}>
+                    {msg.workflow && msg.workflow.steps.length > 0 && (
+                      <InlinePipeline workflow={msg.workflow} />
+                    )}
+                    {onPermissionResponse && (
+                      <ChatExtras
+                        messageId={msg.id}
+                        tables={msg.tables}
+                        attachments={msg.attachments}
+                        navigate={msg.navigate}
+                        permission={msg.permission}
+                        permissionAnswered={msg.permissionAnswered}
+                        onPermission={onPermissionResponse}
+                      />
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -182,7 +269,7 @@ export const ChatPanel: React.FC<Props> = ({
         />
         <form onSubmit={submit} className={s.inputBox}>
           <textarea
-            placeholder="Tell the AI what to automate next..."
+            placeholder="Type a command (e.g. /quiz) or ask a question..."
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => {
@@ -204,15 +291,38 @@ export const ChatPanel: React.FC<Props> = ({
                 style={{ cursor: 'pointer' }}
                 onClick={() => fileRef.current?.click()}
               />
+              <Mic size={18} color="#94A3B8" />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <button type="button" className={s.turboBtn}>⚡ TURBO</button>
               <button type="submit" className={s.sendBtn} aria-label="Send">
                 <Send size={15} />
               </button>
             </div>
           </div>
         </form>
+
+        <div style={{
+          display: 'flex', flexWrap: 'wrap', gap: '0.85rem',
+          padding: '0.55rem 0.15rem 0',
+          fontSize: '0.74rem',
+        }}>
+          {SLASH_COMMANDS.map(({ command, description }) => (
+            <button
+              key={command}
+              type="button"
+              onClick={() => setText(prev => prev ? prev : `${command} `)}
+              style={{
+                background: 'transparent', border: 'none',
+                padding: 0, cursor: 'pointer',
+                display: 'inline-flex', alignItems: 'baseline', gap: '0.35rem',
+                color: '#64748B',
+              }}
+            >
+              <span style={{ color: 'var(--primary)', fontWeight: 700 }}>{command}</span>
+              <span>{description}</span>
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );

@@ -15,6 +15,27 @@ export interface ResourceAttachment {
   uploadedAt: Date;
 }
 
+/**
+ * One row of a rubric. Scores are out of `maxPoints`; `weight` is what fraction
+ * of the final grade this criterion contributes (0-100, must sum to ~100 across
+ * all criteria but we don't enforce it strictly).
+ */
+export interface RubricCriterion {
+  name: string;
+  description?: string;
+  maxPoints: number;
+  weight: number;
+  mandatory?: boolean;
+}
+
+export interface Rubric {
+  criteria: RubricCriterion[];
+  totalPoints: number;
+  /** Optional human-written notes the LLM should respect (e.g. "don't give full marks unless..."). */
+  graderNotes?: string;
+  updatedAt: Date;
+}
+
 export interface ResourceDoc extends Document {
   _id: Types.ObjectId;
   kind: ResourceKind;
@@ -29,6 +50,7 @@ export interface ResourceDoc extends Document {
   maxMarks?: number;
   unit?: string;
   attachments: ResourceAttachment[];
+  rubric?: Rubric;
   publishedAt?: Date;
   createdAt: Date;
   updatedAt: Date;
@@ -52,6 +74,27 @@ const attachmentSchema = new Schema<ResourceAttachment>(
   { _id: true }
 );
 
+const rubricCriterionSchema = new Schema<RubricCriterion>(
+  {
+    name:        { type: String, required: true, trim: true, maxlength: 120 },
+    description: { type: String, trim: true, maxlength: 2000 },
+    maxPoints:   { type: Number, required: true, min: 0 },
+    weight:      { type: Number, required: true, min: 0, max: 100 },
+    mandatory:   { type: Boolean, default: false },
+  },
+  { _id: false }
+);
+
+const rubricSchema = new Schema<Rubric>(
+  {
+    criteria:    { type: [rubricCriterionSchema], default: [] },
+    totalPoints: { type: Number, required: true, min: 0 },
+    graderNotes: { type: String, trim: true, maxlength: 4000 },
+    updatedAt:   { type: Date, default: () => new Date() },
+  },
+  { _id: false }
+);
+
 const resourceSchema = new Schema<ResourceDoc>(
   {
     kind: { type: String, enum: ['assignment', 'notes'], required: true, index: true },
@@ -70,6 +113,7 @@ const resourceSchema = new Schema<ResourceDoc>(
     unit:     { type: String, trim: true, maxlength: 120 },
 
     attachments: { type: [attachmentSchema], default: [] },
+    rubric:      { type: rubricSchema, required: false },
     publishedAt: { type: Date },
   },
   { timestamps: true }

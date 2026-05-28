@@ -28,7 +28,7 @@ from app.core.config import get_settings
 from app.core.logging import get_logger
 from app.core.security import AuthPrincipal
 from app.integrations.erp_client import UploadFile
-from app.schemas.chat import ChatResponse
+from app.schemas.chat import ChatResponse, PermissionResponse
 from app.tools.erp import erp_tools
 
 log = get_logger("agent.erp")
@@ -85,6 +85,101 @@ Never call it before the file is attached, even if you already have all the text
 details — wait for the file.
 - There is no "folder" concept; if the user mentions a folder, treat it as the \
 `unit` label.
+
+Updating / submission / report flows:
+- "Update the deadline" / "change the due date" / "extend the deadline": call \
+update_resource with the new `due_date` (YYYY-MM-DD). Do NOT create a new \
+assignment. If the user then says "notify the students who haven't submitted", \
+follow with notify_non_submitters on the SAME resource id.
+- "How many students have submitted X?" / "who hasn't submitted?": use \
+submission_stats(resource_id). For full lists per status, use list_submissions.
+- "Show me / list the assignments I uploaded for class TE-A / for OS": call \
+list_resources with kind="assignment", mine=True, and the matching division_id \
+and/or subject_id. Same pattern for notes (kind="notes").
+- "Get / download / export attendance PDF": resolve the scope (one lecture vs a \
+whole division) and call export_lecture_roster_pdf or \
+export_division_attendance_pdf. Surface the returned `url` to the user as a \
+clickable link.
+- "Generate a N-question assignment from chapter X notes and upload it to \
+<subject>": first find the source notes with list_resources(kind="notes", ...), \
+resolve the target division+subject, then call \
+generate_assignment_from_notes(notes_resource_id, subject_id, division_id, \
+num_questions, due_date). You MUST ask for the due date if the user didn't give \
+one — never guess. The tool returns a DRAFT; confirm with the user before \
+calling publish_resource.
+- read_resource_text is a helper if the user asks "summarise the notes" or you \
+need to inspect note content for some other reason. Don't call it as part of \
+generate_assignment_from_notes — that tool reads the notes itself.
+
+Rubric-based AI grading ("validate / grade / evaluate the submissions"):
+- The full pipeline is: set_rubric -> grade_submissions_with_rubric -> review \
+proposals -> publish_proposed_grades (or publish_one_grade per student).
+- AI grades are PROPOSED, not published. Students do not see scores until the \
+teacher publishes. Always make this explicit in your reply.
+- If the assignment has no rubric and the user asks you to grade, FIRST get the \
+rubric. The teacher can provide it three ways:
+    (a) Type the criteria in chat ("Correctness 40% max 8, Clarity 30% max 6, \
+        ..."). Parse it and call set_rubric.
+    (b) Attach a rubric PDF on the same turn. Resolve the target assignment \
+        first (list_resources), then call \
+        parse_rubric_from_chat_attachment(resource_id) — that tool reads the \
+        attached file, asks Gemini to extract criteria, and saves the rubric. \
+        After it returns, summarise the parsed criteria back to the teacher so \
+        they can sanity-check before grading.
+    (c) Use the dashboard rubric editor (no chat tool needed).
+  Never invent a rubric — the teacher must define it.
+- IMPORTANT: parse_rubric_from_chat_attachment ONLY works on the SAME turn the \
+file is attached (the message ends with "[The user attached N file(s): ...]"). \
+Files don't carry over. If the user mentions "the rubric I uploaded" on a later \
+turn with no current attachment, ask them to attach it again.
+- For the chat-attached rubric flow, DO NOT also call create_resource on the \
+same file — the rubric PDF is metadata, not a student-facing resource. \
+parse_rubric_from_chat_attachment consumes the file directly.
+- After grade_submissions_with_rubric returns, IMMEDIATELY enter the \
+PERMISSION FLOW for EVERY graded submission, regardless of count (even if only \
+one was graded). On THIS turn, pick the FIRST proposal that hasn't been \
+decided yet and call ask_grading_permission(student_name, submission_id, \
+proposed_score, max_marks, one_line_feedback, resource_id). That tool renders \
+a dropdown in the chat with three choices: allow, allow_for_all, deny.
+
+  Your text reply for this turn should be short (1-2 sentences) — the dropdown \
+  is the action surface, not your text. Example: "Reviewing proposal 1 of 5. \
+  Pick from the dropdown to continue." Do NOT also write \
+  "(allow / allow for all / deny)" in your reply — the dropdown shows those.
+
+  On the NEXT turn, the user's choice arrives as a system message like:
+      "permission_response: allow for submission_id=<id>, student=<name>"
+  Map that to one of:
+
+    - permission_response: allow
+        -> call publish_one_grade(submission_id) for this submission.
+        -> then call ask_grading_permission for the NEXT pending proposal \
+           (if any). If none remain, summarise the run and stop.
+
+    - permission_response: allow_for_all
+        -> call publish_proposed_grades(resource_id, submission_ids=[ALL \
+           remaining submission ids, INCLUDING the one the teacher just \
+           said allow_for_all on]). After it returns, summarise and stop. \
+           Do NOT call ask_grading_permission again on this run.
+
+    - permission_response: deny
+        -> The user must also have provided a score (the override). It will \
+           appear as "deny with score=14" or similar. Call \
+           publish_one_grade(submission_id, score_override=<number>). \
+           Then call ask_grading_permission for the NEXT pending proposal. \
+           If the user said deny but gave no number yet, just ask them \
+           "What score should I give <student name> instead?" and wait.
+
+  Never invent a "permission_response" — it only counts if it came from the \
+  user via the dropdown OR explicitly in their typed message. Never call \
+  publish_one_grade or publish_proposed_grades on the same turn as \
+  ask_grading_permission — the user must choose first.
+
+- Override at any later point: if the teacher says "actually give Aarav 18 \
+instead", look up his submission via list_submissions, then call \
+publish_one_grade(submission_id, score_override=18).
+- Never publish without an explicit instruction from the teacher. \
+grade_submissions_with_rubric only PROPOSES — it never publishes.
 
 Rules:
 - New quizzes / notes / assignments are created as DRAFTS. After creating one, \
@@ -185,6 +280,23 @@ async def _invoke_turn(
     return result.get("messages", [])
 
 
+def _format_permission_response(pr: PermissionResponse) -> str:
+    """Convert a dropdown selection into the structured marker the system
+    prompt told the agent to expect on the next turn."""
+    ctx = pr.context or {}
+    sub_id = ctx.get("submission_id") or "?"
+    student = ctx.get("student_name") or "?"
+    if pr.value == "deny" and pr.override_score is not None:
+        return (
+            f"[permission_response: deny with score={pr.override_score} "
+            f"for submission_id={sub_id}, student={student}]"
+        )
+    return (
+        f"[permission_response: {pr.value} "
+        f"for submission_id={sub_id}, student={student}]"
+    )
+
+
 async def run_agent(
     *,
     message: str,
@@ -192,6 +304,7 @@ async def run_agent(
     principal: AuthPrincipal,
     token: str,
     files: list[UploadFile] | None = None,
+    permission_response: PermissionResponse | None = None,
 ) -> ChatResponse:
     """Run one turn of the agent for a caller, in the caller's session."""
     graph = _build_graph()
@@ -210,12 +323,22 @@ async def run_agent(
     if files:
         names = ", ".join(f[0] for f in files)
         user_text = f"{message}\n\n[The user attached {len(files)} file(s): {names}]"
+    if permission_response:
+        # Prepend the structured marker so the agent has it before any free-form
+        # text the user may also have typed alongside the dropdown selection.
+        marker = _format_permission_response(permission_response)
+        user_text = f"{marker}\n{user_text}" if user_text.strip() else marker
 
     thread_id = _thread_overrides.get(session_id, session_id)
 
+    # Created on first attempt; reused in retries so the side-channel state
+    # the tools populate survives a thread reset.
+    ctx_holder: list[RunContext] = []
+
     def _ctx() -> RunContext:
-        # Fresh context per attempt so retries still carry the attached files.
-        return RunContext(principal=principal, token=token, files=list(files))
+        c = RunContext(principal=principal, token=token, files=list(files))
+        ctx_holder.append(c)
+        return c
 
     try:
         msgs = await _invoke_turn(
@@ -246,9 +369,16 @@ async def run_agent(
             reply = m.content if isinstance(m.content, str) else str(m.content)
             break
 
+    # Drain UI side-channels from the final run context (the latest one wins —
+    # if a retry created multiple, the last one ran to completion).
+    final_ctx = ctx_holder[-1] if ctx_holder else None
     return ChatResponse(
         reply=reply or "(no reply)",
         session_id=session_id,
         tools_used=[t["tool"] for t in _collect_tool_trace(msgs)],
         steps=_collect_tool_trace(msgs),
+        tables=final_ctx.tables if final_ctx else [],
+        attachments=final_ctx.attachments if final_ctx else [],
+        navigate=final_ctx.navigate if final_ctx else None,
+        permission=final_ctx.permission if final_ctx else None,
     )

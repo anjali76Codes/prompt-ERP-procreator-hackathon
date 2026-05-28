@@ -16,11 +16,14 @@ from __future__ import annotations
 from contextlib import contextmanager
 from contextvars import ContextVar
 from dataclasses import dataclass, field
-from typing import Iterator
+from typing import Any, Iterator
 
 from app.core.errors import bad_request
 from app.core.security import AuthPrincipal
 from app.integrations.erp_client import ErpClient, UploadFile
+from app.schemas.chat import (
+    ChatAttachment, ChatNavigate, ChatPermission, ChatTable,
+)
 
 
 @dataclass
@@ -32,6 +35,12 @@ class RunContext:
     # Files the user attached to this turn, as (field, bytes, content_type).
     files: list[UploadFile] = field(default_factory=list)
 
+    # ---- UI side-channels (populated by tools, drained by the chat endpoint).
+    tables: list[ChatTable] = field(default_factory=list)
+    attachments: list[ChatAttachment] = field(default_factory=list)
+    navigate: ChatNavigate | None = None
+    permission: ChatPermission | None = None
+
     def erp(self) -> ErpClient:
         return ErpClient(self.token)
 
@@ -40,6 +49,27 @@ class RunContext:
         same turn doesn't re-upload the same bytes."""
         files, self.files = self.files, []
         return files
+
+    # ---- Tool-facing helpers ---------------------------------------------
+
+    def add_table(self, columns: list[str], rows: list[list[Any]], title: str | None = None) -> None:
+        if columns and rows:
+            self.tables.append(ChatTable(title=title, columns=columns, rows=rows))
+
+    def add_attachment(
+        self, *, name: str, url: str, mime_type: str | None = None, size_bytes: int | None = None
+    ) -> None:
+        self.attachments.append(
+            ChatAttachment(name=name, url=url, mime_type=mime_type, size_bytes=size_bytes)
+        )
+
+    def set_navigate(self, label: str, path: str) -> None:
+        # Last writer wins — the most recent tool's navigate hint is the most
+        # relevant for the user's final action.
+        self.navigate = ChatNavigate(label=label, path=path)
+
+    def set_permission(self, permission: ChatPermission) -> None:
+        self.permission = permission
 
 
 _current: ContextVar[RunContext | None] = ContextVar("erp_run_context", default=None)

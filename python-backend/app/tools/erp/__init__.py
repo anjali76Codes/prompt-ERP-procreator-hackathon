@@ -8,7 +8,15 @@ from __future__ import annotations
 
 from langchain_core.tools import BaseTool
 
-from app.tools.erp import academic, attendance, quizzes, resources
+from app.tools.erp import (
+    academic,
+    attendance,
+    generate,
+    grading,
+    quizzes,
+    resources,
+    submissions,
+)
 
 
 def erp_tools() -> list[BaseTool]:
@@ -20,6 +28,10 @@ def erp_tools() -> list[BaseTool]:
         resources.create_resource,
         resources.publish_resource,
         resources.list_resources,
+        resources.get_resource,
+        resources.update_resource,
+        resources.notify_non_submitters,
+        resources.read_resource_text,
         # Quizzes.
         quizzes.create_quiz,
         quizzes.publish_quiz,
@@ -33,4 +45,20 @@ def erp_tools() -> list[BaseTool]:
         attendance.mark_attendance_for_all,
         attendance.division_attendance_stats,
         attendance.student_attendance,
+        attendance.export_division_attendance_pdf,
+        attendance.export_lecture_roster_pdf,
+        # Submissions (viewing + per-submission grading).
+        submissions.list_submissions,
+        submissions.submission_stats,
+        submissions.grade_submission,
+        submissions.request_resubmit,
+        # Composite generators.
+        generate.generate_assignment_from_notes,
+        # Rubric-based AI grading.
+        grading.set_rubric,
+        grading.parse_rubric_from_chat_attachment,
+        grading.grade_submissions_with_rubric,
+        grading.ask_grading_permission,
+        grading.publish_proposed_grades,
+        grading.publish_one_grade,
     ]

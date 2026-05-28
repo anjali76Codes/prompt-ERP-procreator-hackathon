@@ -54,4 +54,12 @@ router.post(
   ctl.requestResubmit
 );
 
+// Send a reminder notification to every student in the division who hasn't
+// submitted this assignment yet.
+router.post(
+  '/resources/:id/notify-non-submitters',
+  requireRole('teacher', 'admin'),
+  ctl.notifyNonSubmitters
+);
+
 export default router;

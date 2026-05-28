@@ -55,6 +55,16 @@ class Settings(BaseSettings):
         alias="NODE_API_URL",
     )
 
+    # --- Public exports --------------------------------------------------
+    # Where on-disk export files (PDFs the agent produced) live, and the
+    # base URL that maps to that directory via FastAPI's StaticFiles mount.
+    exports_dir: str = Field(default="exports", alias="EXPORTS_DIR")
+    public_base_url: str = Field(
+        default="http://localhost:8000",
+        alias="PUBLIC_BASE_URL",
+        description="External base URL the agent uses when linking to /exports/*.",
+    )
+
     # --- Google Gemini ---------------------------------------------------
     gemini_api_key: str = Field(default="", alias="GEMINI_API_KEY")
     gemini_model: str = Field(

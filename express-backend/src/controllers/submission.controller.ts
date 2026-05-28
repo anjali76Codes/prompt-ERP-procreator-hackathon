@@ -74,3 +74,13 @@ export const requestResubmit = asyncHandler(async (req: Request, res: Response) 
   const doc = await submissions.requestResubmission(submissionId, req.auth.sub);
   res.json({ submission: doc });
 });
+
+export const notifyNonSubmitters = asyncHandler(async (req: Request, res: Response) => {
+  if (!req.auth) throw Unauthorized();
+  const resourceId = req.params.id;
+  if (!resourceId) throw BadRequest('Assignment id required');
+
+  const message = typeof req.body?.message === 'string' ? req.body.message : undefined;
+  const result = await submissions.notifyNonSubmitters(resourceId, req.auth.sub, message);
+  res.json(result);
+});

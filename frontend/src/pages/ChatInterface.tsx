@@ -1,25 +1,20 @@
-import React, { useEffect } from 'react';
-import { Cpu, Eye, EyeOff, FileText, Lock } from 'lucide-react';
+import React from 'react';
+import { Cpu, FileText, Lock } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { ChatPanel } from '../components/automation/ChatPanel';
-import { WorkflowPipeline } from '../components/automation/WorkflowPipeline';
-import { TerminalLog } from '../components/automation/TerminalLog';
 import { SavedWorkflows } from '../components/automation/SavedWorkflows';
-import { useAutomationEngine, ACTIVE_MODEL, CONNECTED_CONTEXT } from '../lib/automation/engine';
-import { useSidebarState } from '../lib/useSidebarState';
+import { RecentActivityRail } from '../components/automation/RecentActivityRail';
+import { useAutomationEngine } from '../lib/automation/engine';
 import s from '../components/automation/Automation.module.css';
 
 /**
  * Conversational AI workflow assistant — previously mounted at /automation,
- * now lives at /chat-interface. The deterministic step recorder is the new
- * /automation dashboard.
+ * now lives at /chat-interface. The pipeline of tool calls renders INSIDE
+ * each AI message bubble (see InlinePipeline) so the chat surface keeps the
+ * full width and the right rail stays reserved for past chats.
  */
 export const ChatInterface: React.FC = () => {
   const engine = useAutomationEngine();
-  const split = engine.workflow !== null;
-  const { setCollapsed } = useSidebarState();
-
-  useEffect(() => { if (split) setCollapsed(true); }, [split, setCollapsed]);
 
   return (
     <AppLayout
@@ -37,17 +32,18 @@ export const ChatInterface: React.FC = () => {
       }
     >
       <div className={s.page}>
-        <div className={s.workspace}>
-          <div className={`${s.chatCol} ${split ? s.split : s.full}`}>
+        <div className={s.workspace} style={{ display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
+          <div className={`${s.chatCol} ${s.full}`} style={{ flex: 1, minWidth: 0 }}>
             <ChatPanel
               messages={engine.messages}
-              split={split}
+              split={false}
               suggestedPrompts={engine.suggestedPrompts}
               onSend={engine.send}
+              onPermissionResponse={engine.sendPermissionResponse}
               onInsightAction={() => engine.highlightStudents()}
             />
 
-            <div className={`${s.quickActions} ${split ? s.split : s.full}`}>
+            <div className={`${s.quickActions} ${s.full}`}>
               <button
                 className={s.quickActionBtn}
                 onClick={() => engine.send('Generate student analytical performance report in PDF')}
@@ -64,54 +60,18 @@ export const ChatInterface: React.FC = () => {
 
             {/* <SavedWorkflows
               templates={engine.templates}
-              split={split}
+              split={false}
               onRun={engine.runTemplate}
             /> */}
           </div>
 
-          <div className={`${s.workflowCol} ${split ? s.visible : s.hidden}`}>
-            <div className={s.metaCard}>
-              <div className={s.metaGroup}>
-                <div>
-                  <div className={s.metaLabel}>Active Model</div>
-                  <div className={s.metaValue}>
-                    <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: ACTIVE_MODEL.online ? '#10B981' : '#94A3B8' }} />
-                    <span>{ACTIVE_MODEL.name}</span>
-                    <span style={{ fontSize: '0.625rem', fontWeight: 800, backgroundColor: '#EFF6FF', color: 'var(--primary)', padding: '0.15rem 0.5rem', borderRadius: '0.25rem', letterSpacing: '0.5px' }}>
-                      {ACTIVE_MODEL.badge}
-                    </span>
-                  </div>
-                </div>
-                <div className={s.metaDivider}>
-                  <div className={s.metaLabel}>Connected Context</div>
-                  <div className={s.metaValue}>
-                    {CONNECTED_CONTEXT.primary}
-                    <span style={{ color: '#94A3B8', margin: '0 0.4rem' }}>•</span>
-                    <span style={{ color: 'var(--primary)' }}>{CONNECTED_CONTEXT.secondary}</span>
-                  </div>
-                </div>
-              </div>
-
-              <button
-                className={`${s.logsToggle} ${engine.showLogs ? '' : s.off}`}
-                onClick={engine.toggleLogs}
-              >
-                {engine.showLogs ? <Eye size={13} /> : <EyeOff size={13} />}
-                LOGS: {engine.showLogs ? 'ON' : 'OFF'}
-              </button>
-            </div>
-
-            {engine.workflow && (
-              <WorkflowPipeline
-                workflow={engine.workflow}
-                isPaused={engine.isPaused}
-                onTogglePause={engine.togglePause}
-                onDeploy={engine.deploy}
-              />
-            )}
-
-            <TerminalLog open={engine.showLogs} logs={engine.logs} />
-          </div>
+          <RecentActivityRail
+            sessions={engine.sessions}
+            activeSessionId={engine.activeSessionId}
+            onSelect={(id) => { void engine.loadSession(id); }}
+            onNew={engine.newChat}
+            onDelete={(id) => { void engine.removeSession(id); }}
+          />
         </div>
       </div>
     </AppLayout>
