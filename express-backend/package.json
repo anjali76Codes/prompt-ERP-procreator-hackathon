@@ -9,7 +9,8 @@
     "build": "tsc",
     "typecheck": "tsc --noEmit",
     "seed:admin": "ts-node-dev --transpile-only src/scripts/seed-admin.ts",
-    "seed:demo": "ts-node-dev --transpile-only src/scripts/seed-demo.ts"
+    "seed:demo": "ts-node-dev --transpile-only src/scripts/seed-demo.ts",
+    "seed:quizzes": "ts-node-dev --transpile-only src/scripts/seed-quizzes.ts"
   },
   "keywords": [],
   "author": "",

@@ -57,11 +57,8 @@ export const TeacherQuizOverview: React.FC = () => {
   React.useEffect(() => { reload(); }, [reload]);
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list');
-  const [branchFilter, setBranchFilter] = useState('All Branches');
-  const [semesterFilter, setSemesterFilter] = useState('All Semesters');
   const [divisionFilter, setDivisionFilter] = useState('All Divisions');
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
-  const [chapterFilter, setChapterFilter] = useState('All Chapters');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
 
   const handleDeleteQuiz = async (id: string) => {
@@ -170,15 +167,17 @@ export const TeacherQuizOverview: React.FC = () => {
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.85rem', fontWeight: 800, color: '#334155', borderBottom: '1px solid #F1F5F9', paddingBottom: '0.75rem' }}>
             <Filter size={16} /> Advanced Filters
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '1rem' }}>
-            {[
-              { label: 'Branch', val: branchFilter, set: setBranchFilter, opts: ['All Branches', 'Computer Science', 'Information Technology'] },
-              { label: 'Semester', val: semesterFilter, set: setSemesterFilter, opts: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4'] },
-              { label: 'Division', val: divisionFilter, set: setDivisionFilter, opts: ['Div A', 'Div B', 'Div C'] },
-              { label: 'Subject', val: subjectFilter, set: setSubjectFilter, opts: ['Java OOP', 'DBMS', 'Operating Systems'] },
-              { label: 'Chapter', val: chapterFilter, set: setChapterFilter, opts: ['All Chapters', 'Polymorphism', '3NF', 'CPU Scheduling'] },
-              { label: 'Status', val: statusFilter, set: setStatusFilter, opts: ['All Statuses', 'Published', 'Draft', 'Scheduled'] }
-            ].map((filt, idx) => (
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem' }}>
+            {(() => {
+              // Build dropdown options from the real quizzes that came back from the API.
+              const uniqueDivisions = Array.from(new Set(quizzes.map(q => q.division).filter(Boolean)));
+              const uniqueSubjects = Array.from(new Set(quizzes.map(q => q.subject).filter(Boolean)));
+              return [
+                { label: 'Division', val: divisionFilter, set: setDivisionFilter, opts: ['All Divisions', ...uniqueDivisions] },
+                { label: 'Subject', val: subjectFilter, set: setSubjectFilter, opts: ['All Subjects', ...uniqueSubjects] },
+                { label: 'Status', val: statusFilter, set: setStatusFilter, opts: ['All Statuses', 'Published', 'Draft', 'Archived'] }
+              ];
+            })().map((filt, idx) => (
               <div key={idx}>
                 <label style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748B', display: 'block', marginBottom: '0.35rem' }}>{filt.label}</label>
                 <select 
@@ -225,6 +224,8 @@ export const TeacherQuizOverview: React.FC = () => {
         <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
           {quizzes
             .filter(quiz => statusFilter.startsWith('All') || quiz.status === statusFilter)
+            .filter(quiz => subjectFilter.startsWith('All') || quiz.subject === subjectFilter)
+            .filter(quiz => divisionFilter.startsWith('All') || quiz.division === divisionFilter)
             .map(quiz => (
             <div key={quiz.id} style={{ backgroundColor: 'white', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-lg)', padding: '1.5rem', display: 'flex', flexDirection: 'column', gap: '1.25rem', boxShadow: '0 1px 3px rgba(0,0,0,0.02)' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>

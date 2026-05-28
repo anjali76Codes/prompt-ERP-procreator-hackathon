@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Sparkles, MoreVertical, Loader2, Cpu, User, Paperclip, Image as ImageIcon, Send, TrendingUp,
+  Sparkles, MoreVertical, Loader2, Cpu, User, Paperclip, Image as ImageIcon, Send, TrendingUp, X,
 } from 'lucide-react';
 import s from './Automation.module.css';
 import type { ChatMessage, ChatInsight } from '../../lib/automation/types';
@@ -9,7 +9,7 @@ interface Props {
   messages: ChatMessage[];
   split: boolean;
   suggestedPrompts: readonly string[];
-  onSend: (text: string) => void;
+  onSend: (text: string, files?: File[]) => void;
   onInsightAction?: (insight: ChatInsight) => void;
 }
 
@@ -17,16 +17,30 @@ export const ChatPanel: React.FC<Props> = ({
   messages, split, suggestedPrompts, onSend, onInsightAction,
 }) => {
   const [text, setText] = useState('');
+  const [files, setFiles] = useState<File[]>([]);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // NB: convert the FileList to an array *here*, synchronously. If we defer
+  // it into the setState updater, the input's `value=''` reset below empties
+  // the live FileList before the updater runs and we'd store zero files.
+  const addFiles = (picked: File[]) => {
+    if (picked.length === 0) return;
+    setFiles(prev => [...prev, ...picked]);
+  };
+  const removeFile = (idx: number) =>
+    setFiles(prev => prev.filter((_, i) => i !== idx));
 
   const submit = (e?: React.FormEvent, override?: string) => {
     e?.preventDefault();
     const v = override ?? text;
-    if (!v.trim()) return;
-    onSend(v);
-    if (!override) setText('');
+    // Suggestion chips (override) never carry attachments.
+    const attached = override ? [] : files;
+    if (!v.trim() && attached.length === 0) return;
+    onSend(v, attached.length ? attached : undefined);
+    if (!override) { setText(''); setFiles([]); }
   };
 
   return (
@@ -122,6 +136,31 @@ export const ChatPanel: React.FC<Props> = ({
       </div>
 
       <div className={s.inputWrap}>
+        {files.length > 0 && (
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: '0.4rem', marginBottom: '0.5rem' }}>
+            {files.map((f, i) => (
+              <span
+                key={`${f.name}-${i}`}
+                style={{
+                  display: 'inline-flex', alignItems: 'center', gap: '0.35rem',
+                  background: '#EFF6FF', border: '1px solid #DBEAFE', color: 'var(--primary)',
+                  borderRadius: '0.5rem', padding: '0.2rem 0.5rem', fontSize: '0.72rem', fontWeight: 700,
+                }}
+              >
+                <Paperclip size={12} />
+                {f.name.length > 28 ? f.name.slice(0, 25) + '…' : f.name}
+                <X size={13} style={{ cursor: 'pointer' }} onClick={() => removeFile(i)} />
+              </span>
+            ))}
+          </div>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          multiple
+          hidden
+          onChange={e => { addFiles(Array.from(e.target.files ?? [])); e.target.value = ''; }}
+        />
         <form onSubmit={submit} className={s.inputBox}>
           <textarea
             placeholder="Tell the AI what to automate next..."
@@ -136,8 +175,16 @@ export const ChatPanel: React.FC<Props> = ({
           />
           <div className={s.inputFooter}>
             <div className={s.inputIcons}>
-              <Paperclip size={18} />
-              <ImageIcon size={18} />
+              <Paperclip
+                size={18}
+                style={{ cursor: 'pointer' }}
+                onClick={() => fileRef.current?.click()}
+              />
+              <ImageIcon
+                size={18}
+                style={{ cursor: 'pointer' }}
+                onClick={() => fileRef.current?.click()}
+              />
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
               <button type="button" className={s.turboBtn}>⚡ TURBO</button>
