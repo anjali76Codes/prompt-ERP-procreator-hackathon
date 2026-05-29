@@ -1,4 +1,5 @@
-const RAW_BASE = (import.meta.env.VITE_API_URL as string | undefined) ?? 'http://localhost:5000/api';
+const RAW_BASE = (import.meta.env.VITE_API_URL as string | undefined)
+  ?? (import.meta.env.DEV ? 'http://18.234.50.17:3000/api' : '/api');
 export const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 const TOKEN_KEY = 'auth:token';
