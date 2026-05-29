@@ -4,7 +4,7 @@ import { LogOut, Menu, User } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { Logo } from '../ui/Logo';
 import {
-  studentNav, teacherNav, teacherTools, type NavItem,
+  studentNav, teacherNav, teacherTools, teacherQuickActions, type NavItem,
 } from '../../lib/navConfig';
 import type { Role } from '../../lib/useRole';
 import { useAuth } from '../../lib/auth/AuthContext';
@@ -69,6 +69,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
           <div className={`sidebar-section ${isCollapsed ? 'collapsed' : ''}`}>
             {!isCollapsed && <div className="sidebar-section-title">Tools</div>}
             <NavList items={teacherTools} isCollapsed={isCollapsed} />
+          </div>
+        )}
+
+        {isTeacher && (
+          <div className={`sidebar-section ${isCollapsed ? 'collapsed' : ''}`}>
+            {!isCollapsed && <div className="sidebar-section-title">Quick Actions</div>}
+            <NavList items={teacherQuickActions} isCollapsed={isCollapsed} />
           </div>
         )}
       </nav>

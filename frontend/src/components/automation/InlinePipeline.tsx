@@ -50,38 +50,63 @@ export const InlinePipeline: React.FC<Props> = ({ workflow }) => {
       </button>
 
       {expanded && (
-        <div style={{ marginTop: '0.55rem', display: 'flex', flexDirection: 'column' }}>
+        <div style={{ marginTop: '0.7rem', display: 'flex', flexDirection: 'column' }}>
           {steps.map((step, idx) => {
             const pill = STATUS_PILL[step.status] ?? STATUS_PILL.queued;
             const isLast = idx === steps.length - 1;
+            const isProcessing = step.status === 'running';
+            const isCompleted = step.status === 'completed';
+            // Bordered step box. Processing → blue accent, completed → green tint,
+            // queued/failed/skipped → neutral.
+            const boxBorder = isProcessing ? '2px solid var(--primary)'
+              : isCompleted ? '1px solid #BBF7D0'
+              : '1px solid #E2E8F0';
+            const boxBg = isProcessing ? '#F5F9FF'
+              : isCompleted ? '#FFFFFF'
+              : '#FFFFFF';
             return (
-              <div key={step.id} style={{ display: 'flex', gap: '0.55rem', alignItems: 'flex-start' }}>
-                {/* Icon column with vertical connector */}
+              <div key={step.id} style={{ display: 'flex', gap: '0.7rem', alignItems: 'stretch' }}>
+                {/* Icon column with vertical connector rail */}
                 <div style={{
                   display: 'flex', flexDirection: 'column', alignItems: 'center',
-                  flexShrink: 0,
+                  flexShrink: 0, width: 32,
                 }}>
                   <div style={{
-                    width: 28, height: 28, borderRadius: '0.4rem',
-                    background: step.iconBg ?? '#EFF6FF',
-                    color: step.color ?? 'var(--primary)',
+                    width: 32, height: 32, borderRadius: '0.45rem',
+                    background: step.iconBg ?? (isCompleted ? '#DCFCE7' : '#EFF6FF'),
+                    color: step.color ?? (isCompleted ? '#15803D' : 'var(--primary)'),
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    flexShrink: 0,
+                    boxShadow: isProcessing ? '0 0 0 3px rgba(0, 74, 198, 0.15)' : 'none',
+                    transition: 'box-shadow 0.2s',
                   }}>
                     {React.isValidElement(STEP_ICON[step.kind])
-                      ? React.cloneElement(STEP_ICON[step.kind] as React.ReactElement<{ size?: number }>, { size: 14 })
+                      ? React.cloneElement(STEP_ICON[step.kind] as React.ReactElement<{ size?: number }>, { size: 16 })
                       : null}
                   </div>
                   {!isLast && (
                     <div style={{
-                      width: 1, flex: 1,
-                      minHeight: 16,
-                      background: '#E2E8F0',
+                      width: 2, flex: 1,
+                      minHeight: 18,
+                      background: isCompleted ? '#10B981' : '#CBD5E1',
+                      marginTop: 4,
+                      marginBottom: 4,
+                      borderRadius: 1,
                     }} />
                   )}
                 </div>
 
-                {/* Step body */}
-                <div style={{ flex: 1, minWidth: 0, paddingBottom: isLast ? 0 : '0.7rem' }}>
+                {/* Step body — bordered card */}
+                <div style={{
+                  flex: 1, minWidth: 0,
+                  marginBottom: isLast ? 0 : '0.55rem',
+                  border: boxBorder,
+                  background: boxBg,
+                  borderRadius: '0.55rem',
+                  padding: '0.65rem 0.85rem',
+                  boxShadow: isProcessing ? '0 2px 10px rgba(0, 74, 198, 0.08)' : 'none',
+                  transition: 'border-color 0.2s, background 0.2s, box-shadow 0.2s',
+                }}>
                   <div style={{
                     display: 'flex', alignItems: 'center', justifyContent: 'space-between',
                     gap: '0.5rem',
@@ -96,7 +121,7 @@ export const InlinePipeline: React.FC<Props> = ({ workflow }) => {
                     </div>
                     <span style={{
                       flexShrink: 0,
-                      padding: '0.15rem 0.5rem',
+                      padding: '0.18rem 0.55rem',
                       background: pill.bg, color: pill.color,
                       borderRadius: '999px',
                       fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.4px',
@@ -106,8 +131,8 @@ export const InlinePipeline: React.FC<Props> = ({ workflow }) => {
                   </div>
                   {step.description && (
                     <div style={{
-                      fontSize: '0.78rem', color: '#475569', marginTop: '0.15rem',
-                      lineHeight: 1.4,
+                      fontSize: '0.78rem', color: '#475569', marginTop: '0.3rem',
+                      lineHeight: 1.45,
                     }}>
                       {step.description}
                     </div>

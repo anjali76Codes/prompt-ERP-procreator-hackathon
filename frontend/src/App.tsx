@@ -28,11 +28,37 @@ import { AiGrading } from './pages/AiGrading';
 import { StudentResources } from './pages/StudentResources';
 import { QuizCreate } from './pages/QuizCreate';
 import { TeacherQuizOverview } from './pages/TeacherQuizOverview';
+import { QuizAnalytics } from './pages/QuizAnalytics';
 import { StudentQuizList } from './pages/StudentQuizList';
 import { StudentQuizDetails } from './pages/StudentQuizDetails';
 import { StudentQuizPlay } from './pages/StudentQuizPlay';
 import { StudentQuizResult } from './pages/StudentQuizResult';
+import { StudentAttendance } from './pages/StudentAttendance';
+import { StudentGrades } from './pages/StudentGrades';
+import { StudentSchedule } from './pages/StudentSchedule';
+import { StudentFinance } from './pages/StudentFinance';
+import { useRole } from './lib/useRole';
 import { AuthProvider } from './lib/auth/AuthContext';
+
+/* Role-aware route shells: render the student page for students and the
+ * existing management page for teachers/admins. This avoids breaking the
+ * teacher routes while giving students a dedicated experience. */
+const AttendanceByRole: React.FC = () => {
+  const { role } = useRole();
+  return role === 'student' ? <StudentAttendance /> : <AttendanceOverview />;
+};
+const GradesByRole: React.FC = () => {
+  const { role } = useRole();
+  return role === 'student' ? <StudentGrades /> : <Navigate to="/grade-batch" replace />;
+};
+const ScheduleByRole: React.FC = () => {
+  const { role } = useRole();
+  return role === 'student' ? <StudentSchedule /> : <Placeholder title="Schedule" />;
+};
+const FinanceByRole: React.FC = () => {
+  const { role } = useRole();
+  return role === 'student' ? <StudentFinance /> : <Placeholder title="Finance" />;
+};
 import { ProtectedRoute } from './lib/auth/ProtectedRoute';
 import { RecorderProvider } from './lib/automation/recorder/RecorderContext';
 import { RecorderOverlay } from './components/automation/recorder/RecorderOverlay';
@@ -93,9 +119,10 @@ const App = () => {
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><AutomationDetail /></ProtectedRoute>
             } />
 
-            {/* Attendance — teachers only, must be active */}
+            {/* Attendance — role-aware: students see their own attendance,
+             *  teachers/admins see the management overview. */}
             <Route path="/attendance" element={
-              <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceOverview /></ProtectedRoute>
+              <ProtectedRoute requireActive><AttendanceByRole /></ProtectedRoute>
             } />
             <Route path="/attendance/mark" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceMark /></ProtectedRoute>
@@ -113,13 +140,11 @@ const App = () => {
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><AttendanceSchedules /></ProtectedRoute>
             } />
 
-            {/* Roadmap stubs */}
-            <Route path="/grades"     element={<ProtectedRoute><Placeholder title="Grades" /></ProtectedRoute>} />
-            <Route path="/schedule"   element={<ProtectedRoute><Placeholder title="Schedule" /></ProtectedRoute>} />
-            <Route path="/resources"  element={<ProtectedRoute roles={['student']} requireActive><StudentResources /></ProtectedRoute>} />
-            <Route path="/finance"    element={<ProtectedRoute><Placeholder title="Finance" /></ProtectedRoute>} />
-            <Route path="/reports"    element={<ProtectedRoute><Placeholder title="Reports" /></ProtectedRoute>} />
-            <Route path="/directory"  element={<ProtectedRoute><Placeholder title="Directory" /></ProtectedRoute>} />
+            {/* Student-facing pages — role-aware shells. */}
+            <Route path="/grades"    element={<ProtectedRoute requireActive><GradesByRole /></ProtectedRoute>} />
+            <Route path="/schedule"  element={<ProtectedRoute requireActive><ScheduleByRole /></ProtectedRoute>} />
+            <Route path="/resources" element={<ProtectedRoute roles={['student']} requireActive><StudentResources /></ProtectedRoute>} />
+            <Route path="/finance"   element={<ProtectedRoute requireActive><FinanceByRole /></ProtectedRoute>} />
 
             {/* Teacher quick actions (dashboard) */}
             <Route path="/announcements" element={
@@ -160,6 +185,9 @@ const App = () => {
             } />
             <Route path="/quizzes" element={
               <ProtectedRoute roles={['teacher', 'admin']} requireActive><TeacherQuizOverview /></ProtectedRoute>
+            } />
+            <Route path="/quizzes/:id/analytics" element={
+              <ProtectedRoute roles={['teacher', 'admin']} requireActive><QuizAnalytics /></ProtectedRoute>
             } />
             <Route path="/student/quizzes" element={
               <ProtectedRoute roles={['student']} requireActive><StudentQuizList /></ProtectedRoute>

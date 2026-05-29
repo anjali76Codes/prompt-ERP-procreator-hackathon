@@ -56,7 +56,13 @@ export const StudentQuizDetails: React.FC = () => {
         setAttempt(currentAttempt);
       } catch (err) {
         console.error('Failed to load quiz', err);
-        toast.error('Failed to load quiz');
+        // Surface the real backend reason so the user understands WHY (e.g.
+        // "not enrolled in this division", "account not approved"). Falling
+        // back to a generic copy lost important context for the user.
+        const message =
+          (err as { message?: string })?.message ??
+          'Failed to load quiz — check your account is approved and you\'re in the right division.';
+        toast.error(message, { autoClose: 6000 });
         navigate('/student/quizzes');
       } finally {
         if (mounted) {

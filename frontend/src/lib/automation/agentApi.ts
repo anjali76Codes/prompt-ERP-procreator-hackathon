@@ -106,6 +106,7 @@ export const sendChat = async (
   message: string,
   sessionId: string,
   permissionResponse?: PermissionResponse,
+  signal?: AbortSignal,
 ): Promise<AgentChatResponse> => {
   const res = await fetch(`${AI_BASE}/agents/chat`, {
     method: 'POST',
@@ -115,6 +116,7 @@ export const sendChat = async (
       sessionId,
       ...(permissionResponse ? { permissionResponse } : {}),
     }),
+    signal,
   });
   return handle(res);
 };
@@ -124,6 +126,7 @@ export const sendChatWithFiles = async (
   message: string,
   sessionId: string,
   files: File[],
+  signal?: AbortSignal,
 ): Promise<AgentChatResponse> => {
   const fd = new FormData();
   fd.append('message', message);
@@ -134,6 +137,7 @@ export const sendChatWithFiles = async (
     method: 'POST',
     headers: authHeader(),
     body: fd,
+    signal,
   });
   return handle(res);
 };

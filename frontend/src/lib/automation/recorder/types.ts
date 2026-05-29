@@ -14,7 +14,26 @@ export type StepType =
   | 'keypress'
   | 'assert'
   | 'loop-start'
-  | 'loop-end';
+  | 'loop-end'
+  | 'if-start'
+  | 'else'
+  | 'if-end';
+
+/** Conditional check evaluated by `if-start`. */
+export type IfConditionSource = 'variable' | 'element-text' | 'element-exists';
+export type IfConditionOperator = '==' | '!=' | '<' | '<=' | '>' | '>=' | 'contains' | 'not-contains' | 'exists' | 'not-exists';
+
+export interface IfCondition {
+  /** Where the left-hand side comes from. */
+  source: IfConditionSource;
+  /** Name of the variable to evaluate when source === 'variable'. */
+  variable?: string;
+  /** CSS selector to inspect when source === 'element-text' / 'element-exists'. */
+  selector?: string;
+  operator: IfConditionOperator;
+  /** Right-hand side. Numeric comparisons coerce both sides via Number(). */
+  value?: string;
+}
 
 /** How a per-row variable is extracted from a matched row element. */
 export interface RowBinding {
@@ -50,6 +69,10 @@ export interface RecordedStep {
   rowBindings?: RowBinding[];
   /** Pairs a loop-start with its matching loop-end. */
   loopId?: string;
+  /** if-start only: condition evaluated to decide which branch runs. */
+  condition?: IfCondition;
+  /** Pairs an if-start with its matching else / if-end. */
+  ifId?: string;
 }
 
 export interface AutomationVariable {

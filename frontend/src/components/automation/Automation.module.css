@@ -34,18 +34,28 @@
 
 .chatCard {
   background-color: white;
-  border: 1px solid #E2E8F0;
-  border-radius: var(--radius-lg);
   display: flex;
   flex-direction: column;
   overflow: hidden;
   width: 100%;
-  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04);
   transition: all 0.65s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
-.chatCard.full   { height: 100%; max-width: 100%; margin: 0; flex: 1; }
-.chatCard.split  { height: 540px; max-width: 100%; margin: 0; }
+/* Full (ChatGPT-style edge-to-edge): keeps a subtle 1px border so the chat
+ * reads as a distinct surface inside the app layout without feeling boxed in. */
+.chatCard.full   {
+  height: 100%; max-width: 100%; margin: 0; flex: 1;
+  border: 1px solid #E2E8F0;
+}
+
+/* Split: kept as a bordered card for when the chat shares the page with
+ * another panel. */
+.chatCard.split  {
+  height: 540px; max-width: 100%; margin: 0;
+  border: 1px solid #E2E8F0;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 10px 30px -10px rgba(0, 0, 0, 0.04);
+}
 
 .chatHeader {
   padding: 1.25rem 1.5rem;
@@ -67,12 +77,12 @@
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  background-color: #0D8ABC;
+  background-color: var(--primary);
   display: flex;
   align-items: center;
   justify-content: center;
   color: white;
-  box-shadow: 0 2px 8px rgba(13, 138, 188, 0.25);
+  box-shadow: 0 2px 8px rgba(0, 74, 198, 0.25);
 }
 
 .chatTitle {
@@ -84,7 +94,7 @@
 .chatStatus {
   font-size: 0.675rem;
   font-weight: 700;
-  color: #10B981;
+  color: var(--primary);
   display: flex;
   align-items: center;
   gap: 0.3rem;
@@ -101,12 +111,12 @@
 
 .chatList {
   flex: 1;
-  padding: 1.75rem 1.75rem 1rem;
+  padding: 1.5rem 2rem 1rem;
   overflow-y: auto;
+  background: #F8FAFC;
   display: flex;
   flex-direction: column;
   gap: 1.5rem;
-  background: #F8FAFC;
 }
 
 .emptyState {
@@ -276,24 +286,24 @@
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: #0D8ABC;
+  background-color: var(--primary);
   color: white;
   display: flex;
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 2px 6px rgba(13, 138, 188, 0.2);
+  box-shadow: 0 2px 6px rgba(0, 74, 198, 0.2);
 }
 
 .aiBubble {
-  background: linear-gradient(135deg, #0E4D83 0%, #123765 100%);
+  background: linear-gradient(135deg, var(--primary) 0%, var(--primary-container) 100%);
   color: white;
   padding: 1.15rem 1.35rem;
   border-radius: 1.5rem;
   font-size: 0.95rem;
   line-height: 1.7;
   font-weight: 500;
-  box-shadow: 0 18px 30px rgba(15, 23, 42, 0.12);
+  box-shadow: 0 18px 30px rgba(0, 74, 198, 0.18);
   position: relative;
 }
 
@@ -301,7 +311,7 @@
   position: absolute;
   right: -12px;
   top: 12px;
-  background-color: #0D5C91;
+  background-color: var(--primary-hover);
   color: white;
   width: 24px;
   height: 24px;
@@ -373,7 +383,7 @@
 /* ---------- Input ---------- */
 
 .inputWrap {
-  padding: 1.25rem;
+  padding: 1rem 2rem 1.25rem;
   border-top: 1px solid #F1F5F9;
   background-color: white;
 }
@@ -447,7 +457,7 @@
   justify-content: center;
   cursor: pointer;
   transition: transform 0.2s;
-  box-shadow: 0 4px 10px rgba(13, 138, 188, 0.25);
+  box-shadow: 0 4px 10px rgba(0, 74, 198, 0.25);
 }
 
 .sendBtn:hover { transform: scale(1.05); }

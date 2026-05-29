@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
-  Cpu, FileText, Lock, Maximize2, Minimize2,
+  Cpu, Maximize2, Minimize2,
   PanelRightClose, PanelRightOpen,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
@@ -8,7 +8,6 @@ import { ChatPanel } from '../components/automation/ChatPanel';
 import { RecentActivityRail } from '../components/automation/RecentActivityRail';
 import { useAutomationEngine } from '../lib/automation/engine';
 import { useSidebarState } from '../lib/useSidebarState';
-import s from '../components/automation/Automation.module.css';
 
 /**
  * Conversational AI workflow assistant.
@@ -46,11 +45,11 @@ export const ChatInterface: React.FC = () => {
   };
 
   /**
-   * In maximized mode we bypass the .page / .workspace / .chatCol classes
-   * (each adds its own 1.5rem padding) so the chat truly fills the viewport.
-   * In normal mode we keep them so the look matches the rest of the app.
+   * Edge-to-edge chat layout (ChatGPT-style). Same structure in both normal
+   * and maximized modes — the only difference is whether we render the page
+   * inside AppLayout or as a fixed overlay.
    */
-  const chatSurface = maximized ? (
+  const chatSurface = (
     <div style={{
       display: 'flex', gap: 0, alignItems: 'stretch',
       width: '100%', height: '100%', overflow: 'hidden',
@@ -63,7 +62,9 @@ export const ChatInterface: React.FC = () => {
         <ChatPanel
           messages={engine.messages}
           split={false}
+          isGenerating={engine.isGenerating}
           onSend={engine.send}
+          onStop={engine.stop}
           onPermissionResponse={engine.sendPermissionResponse}
           onInsightAction={() => engine.highlightStudents()}
         />
@@ -87,45 +88,6 @@ export const ChatInterface: React.FC = () => {
         </div>
       )}
     </div>
-  ) : (
-    <div className={s.page}>
-      <div className={s.workspace} style={{ display: 'flex', gap: '1rem', alignItems: 'stretch' }}>
-        <div className={`${s.chatCol} ${s.full}`} style={{ flex: 1, minWidth: 0 }}>
-          <ChatPanel
-            messages={engine.messages}
-            split={false}
-            onSend={engine.send}
-            onPermissionResponse={engine.sendPermissionResponse}
-            onInsightAction={() => engine.highlightStudents()}
-          />
-
-          <div className={`${s.quickActions} ${s.full}`}>
-            <button
-              className={s.quickActionBtn}
-              onClick={() => engine.send('Generate student analytical performance report in PDF')}
-            >
-              <FileText size={14} color="var(--primary)" /> Generate Report
-            </button>
-            <button
-              className={s.quickActionBtn}
-              onClick={() => engine.send('Securely send the drafted letters via institutional mail tunnels')}
-            >
-              <Lock size={14} color="var(--primary)" /> Secure Send
-            </button>
-          </div>
-        </div>
-
-        {railOpen && (
-          <RecentActivityRail
-            sessions={engine.sessions}
-            activeSessionId={engine.activeSessionId}
-            onSelect={(id) => { void engine.loadSession(id); }}
-            onNew={engine.newChat}
-            onDelete={(id) => { void engine.removeSession(id); }}
-          />
-        )}
-      </div>
-    </div>
   );
 
   const headerActions = (
@@ -148,16 +110,6 @@ export const ChatInterface: React.FC = () => {
       >
         {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
       </button>
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.5rem',
-        backgroundColor: '#EFF6FF', padding: '0.3rem 0.75rem',
-        borderRadius: '2rem', border: '1px solid #DBEAFE',
-      }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#10B981' }} className="pulse-dot" />
-        <span style={{ fontSize: '0.7rem', fontWeight: 800, color: 'var(--primary)', letterSpacing: '0.2px' }}>
-          SYSTEM ONLINE
-        </span>
-      </div>
     </div>
   );
 

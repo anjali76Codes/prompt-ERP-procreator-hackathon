@@ -2,14 +2,14 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   Cpu, Play, Save, Trash2, Plus, RefreshCcw, ArrowLeft, CheckCircle2, AlertCircle,
-  Circle, Variable, History, Share2,
+  Circle, Variable, History, Share2, ListChecks, Settings2, Activity, GitBranch,
 } from 'lucide-react';
 import { toast } from 'react-toastify';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useRecorder } from '../lib/automation/recorder/RecorderContext';
 import * as api from '../lib/automation/recorder/api';
 import type {
-  Automation, AutomationRun, AutomationVariable, RecordedStep,
+  Automation, AutomationRun, AutomationVariable, IfCondition, RecordedStep,
 } from '../lib/automation/recorder/types';
 import { ApiError } from '../lib/api';
 
@@ -24,12 +24,86 @@ const labelStyle: React.CSSProperties = {
   textTransform: 'uppercase', letterSpacing: '0.4px',
 };
 
+/** Compact stat block used in the AutomationDetail hero banner. */
+const HeroStat: React.FC<{ label: string; value: string; tone?: string }> = ({ label, value, tone }) => (
+  <div style={{
+    minWidth: 72,
+    background: 'rgba(255,255,255,0.08)',
+    border: '1px solid rgba(255,255,255,0.14)',
+    borderRadius: '0.55rem',
+    padding: '0.55rem 0.85rem',
+    textAlign: 'center',
+  }}>
+    <div style={{
+      fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.6px',
+      color: '#BFDBFE', textTransform: 'uppercase',
+    }}>
+      {label}
+    </div>
+    <div style={{
+      fontSize: '1.1rem', fontWeight: 800, marginTop: 2,
+      color: tone ?? 'white',
+    }}>
+      {value}
+    </div>
+  </div>
+);
+
+/**
+ * Colored section header used across the page so each card reads as its
+ * own block (Details / Steps / Variables / Recent Runs) rather than a
+ * flat stack of white boxes.
+ */
+const SectionHead: React.FC<{
+  icon: React.ReactNode;
+  title: string;
+  subtitle?: string;
+  accent: string;
+  accentBg: string;
+  right?: React.ReactNode;
+}> = ({ icon, title, subtitle, accent, accentBg, right }) => (
+  <div style={{
+    display: 'flex', alignItems: 'center', gap: '0.75rem',
+    paddingBottom: '0.9rem', marginBottom: '1rem',
+    borderBottom: `1px solid ${accent}25`,
+  }}>
+    <div style={{
+      width: 36, height: 36, borderRadius: '0.5rem',
+      background: accentBg, color: accent,
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      flexShrink: 0,
+    }}>
+      {icon}
+    </div>
+    <div style={{ flex: 1, minWidth: 0 }}>
+      <div style={{
+        fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.7px',
+        color: accent, textTransform: 'uppercase',
+      }}>
+        Section
+      </div>
+      <div style={{ fontSize: '0.98rem', fontWeight: 800, color: '#0F172A', lineHeight: 1.25 }}>
+        {title}
+      </div>
+      {subtitle && (
+        <div style={{ fontSize: '0.74rem', color: '#64748B', marginTop: 2 }}>
+          {subtitle}
+        </div>
+      )}
+    </div>
+    {right && <div style={{ flexShrink: 0 }}>{right}</div>}
+  </div>
+);
+
 const STEP_TYPE_LABEL: Record<RecordedStep['type'], string> = {
   click: 'Click', input: 'Type', change: 'Select',
   submit: 'Submit', navigate: 'Navigate', wait: 'Wait',
   keypress: 'Press Key', assert: 'Assert',
   'loop-start': 'Loop · For each row',
   'loop-end': 'End loop',
+  'if-start': 'If · Condition',
+  'else':     'Else',
+  'if-end':   'End if',
 };
 
 /* Quick-pick row presets — extend as more pages get data-automation-row markup. */
@@ -139,6 +213,57 @@ export const AutomationDetail: React.FC = () => {
 
   const deleteStep = (idx: number) =>
     setSteps(prev => prev.filter((_, i) => i !== idx));
+
+  /**
+   * Wrap step range [fromIdx..toIdx] inclusive in an if/else block.
+   *
+   * Sensible default for the attendance use-case: "if {{pct}} < 75 then …".
+   * The user can edit the condition operands inline after wrapping. We do
+   * NOT generate an `else` branch automatically — most workflows want the
+   * "if true, take a remedial action; otherwise skip" shape.
+   */
+  const wrapInIf = (fromIdx: number, toIdx: number, withElse: boolean) => {
+    const ifId = uid();
+    const start: RecordedStep = {
+      id: uid(),
+      type: 'if-start',
+      selectors: [],
+      label: 'If pct < 75',
+      condition: {
+        source: 'variable',
+        variable: 'pct',
+        operator: '<',
+        value: '75',
+      },
+      ifId,
+    };
+    const elseStep: RecordedStep = {
+      id: uid(),
+      type: 'else',
+      selectors: [],
+      label: 'Else',
+      ifId,
+    };
+    const end: RecordedStep = {
+      id: uid(),
+      type: 'if-end',
+      selectors: [],
+      label: 'End if',
+      ifId,
+    };
+    setSteps(prev => {
+      const next: RecordedStep[] = [];
+      prev.forEach((s, i) => {
+        if (i === fromIdx) next.push(start);
+        next.push(s);
+        if (i === toIdx) {
+          if (withElse) next.push(elseStep);
+          next.push(end);
+        }
+      });
+      return next;
+    });
+  };
 
   /** Wrap step range [fromIdx..toIdx] inclusive in a loop block. */
   const wrapInLoop = (fromIdx: number, toIdx: number, preset: typeof ROW_PRESETS[number]) => {
@@ -330,11 +455,63 @@ export const AutomationDetail: React.FC = () => {
     >
       {error && <div className="status-pill danger" style={{ marginBottom: '1rem' }}>{error}</div>}
 
+      {/* HERO summary banner — at-a-glance status, step count, share state, last run. */}
+      <div style={{
+        marginBottom: '1.25rem',
+        background: 'linear-gradient(120deg, var(--primary) 0%, var(--primary-container) 100%)',
+        borderRadius: 'var(--radius-lg)',
+        padding: '1.25rem 1.5rem',
+        color: 'white',
+        display: 'flex', alignItems: 'center', gap: '1.25rem',
+        boxShadow: '0 10px 30px -10px rgba(0, 74, 198, 0.4)',
+      }}>
+        <div style={{
+          width: 48, height: 48, borderRadius: '0.65rem',
+          background: 'rgba(255,255,255,0.12)', backdropFilter: 'blur(4px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          flexShrink: 0,
+        }}>
+          <Cpu size={22} color="#BFDBFE" />
+        </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{
+            fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.7px',
+            color: '#BFDBFE', textTransform: 'uppercase', marginBottom: 4,
+          }}>
+            Automation
+          </div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 800, lineHeight: 1.2 }}>
+            {automation.name}
+          </div>
+          {description && (
+            <div style={{ fontSize: '0.82rem', color: '#CBD5E1', marginTop: 4, lineHeight: 1.4 }}>
+              {description}
+            </div>
+          )}
+        </div>
+        <div style={{ display: 'flex', gap: '0.85rem', flexShrink: 0 }}>
+          <HeroStat label="Steps" value={String(steps.length)} />
+          <HeroStat label="Variables" value={String(variables.length)} />
+          <HeroStat label="Runs" value={String(runs.length)} />
+          <HeroStat
+            label="Sharing"
+            value={shared ? 'Shared' : 'Private'}
+            tone={shared ? '#34D399' : '#FBBF24'}
+          />
+        </div>
+      </div>
+
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 320px', gap: '1rem', alignItems: 'flex-start' }}>
         {/* LEFT — meta + steps */}
         <div className="stack-md">
           <div className="card">
-            <div className="card-header"><h3>Details</h3></div>
+            <SectionHead
+              icon={<Settings2 size={18} />}
+              title="Details"
+              subtitle="Name, description, and visibility for this automation"
+              accent="#2563EB"
+              accentBg="#EFF6FF"
+            />
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
               <label style={labelStyle}>
                 Name
@@ -359,10 +536,22 @@ export const AutomationDetail: React.FC = () => {
           </div>
 
           <div className="card">
-            <div className="card-header">
-              <h3>Steps</h3>
-              <span className="status-pill muted">{steps.length} total</span>
-            </div>
+            <SectionHead
+              icon={<ListChecks size={18} />}
+              title="Steps"
+              subtitle="Captured actions replayed in order — drag, edit, or re-record any step"
+              accent="#7C3AED"
+              accentBg="#F3E8FF"
+              right={
+                <span style={{
+                  background: '#F1F5F9', color: '#475569',
+                  fontSize: '0.7rem', fontWeight: 800,
+                  padding: '0.2rem 0.6rem', borderRadius: '999px',
+                }}>
+                  {steps.length} total
+                </span>
+              }
+            />
 
             {steps.length === 0 ? (
               <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
@@ -423,6 +612,34 @@ export const AutomationDetail: React.FC = () => {
                   <Variable size={12} /> Wrap range in row-loop
                 </button>
               )}
+              {steps.length > 0 && (
+                <button
+                  className="btn btn-secondary btn-sm"
+                  onClick={() => {
+                    const fromStr = window.prompt(
+                      `Wrap a range in an IF block.\n\n` +
+                      `Use case (attendance): inside a row-loop over students,\n` +
+                      `wrap the "send warning email" steps so they only run when\n` +
+                      `{{pct}} < 75. You can flip the condition after wrapping.\n\n` +
+                      `First step number to include (1–${steps.length}):`,
+                      '1',
+                    );
+                    if (!fromStr) return;
+                    const toStr = window.prompt(`Last step number to include (1–${steps.length}):`, String(steps.length));
+                    if (!toStr) return;
+                    const fromIdx = parseInt(fromStr, 10) - 1;
+                    const toIdx = parseInt(toStr, 10) - 1;
+                    if (Number.isNaN(fromIdx) || Number.isNaN(toIdx) || fromIdx < 0 || toIdx >= steps.length || fromIdx > toIdx) {
+                      window.alert('Invalid range');
+                      return;
+                    }
+                    const withElse = window.confirm('Add an else branch? OK = yes, Cancel = no.');
+                    wrapInIf(fromIdx, toIdx, withElse);
+                  }}
+                >
+                  <GitBranch size={12} /> Wrap range in if/else
+                </button>
+              )}
               <button
                 className="btn btn-secondary btn-sm"
                 onClick={handleDelete}
@@ -437,12 +654,18 @@ export const AutomationDetail: React.FC = () => {
         {/* RIGHT — variables + run history */}
         <div className="stack-md">
           <div className="card">
-            <div className="card-header">
-              <h3><Variable size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} /> Variables</h3>
-              <button className="btn btn-secondary btn-sm btn-icon-only" onClick={addVariable} title="Add variable">
-                <Plus size={12} />
-              </button>
-            </div>
+            <SectionHead
+              icon={<Variable size={18} />}
+              title="Variables"
+              subtitle="Reusable placeholders for step values"
+              accent="#F59E0B"
+              accentBg="#FEF3C7"
+              right={
+                <button className="btn btn-secondary btn-sm btn-icon-only" onClick={addVariable} title="Add variable">
+                  <Plus size={12} />
+                </button>
+              }
+            />
             {variables.length === 0 ? (
               <div style={{ padding: '0.75rem 0', fontSize: '0.75rem', color: '#94A3B8' }}>
                 Convert step values to <code>{`{{var}}`}</code> placeholders to make this automation reusable.
@@ -483,8 +706,14 @@ export const AutomationDetail: React.FC = () => {
           </div>
 
           {showRunForm && askableVariables.length > 0 && (
-            <div className="card" style={{ border: '2px solid #0047FF' }}>
-              <div className="card-header"><h3>Run with values</h3></div>
+            <div className="card" style={{ border: '2px solid var(--primary)' }}>
+              <SectionHead
+                icon={<Activity size={18} />}
+                title="Run with values"
+                subtitle="Fill the variables, then click Run"
+                accent="var(--primary)"
+                accentBg="#EFF6FF"
+              />
               {askableVariables.map(v => (
                 <label key={v.name} style={{ ...labelStyle, marginBottom: '0.5rem' }}>
                   {v.label || v.name}
@@ -508,31 +737,50 @@ export const AutomationDetail: React.FC = () => {
           )}
 
           <div className="card">
-            <div className="card-header">
-              <h3><History size={14} style={{ marginRight: 4, verticalAlign: '-2px' }} /> Recent Runs</h3>
-              <button className="btn btn-secondary btn-sm btn-icon-only" onClick={() => void refresh()} title="Refresh">
-                <RefreshCcw size={12} />
-              </button>
-            </div>
+            <SectionHead
+              icon={<History size={18} />}
+              title="Recent Runs"
+              subtitle="Last 10 playback results"
+              accent="#10B981"
+              accentBg="#D1FAE5"
+              right={
+                <button className="btn btn-secondary btn-sm btn-icon-only" onClick={() => void refresh()} title="Refresh">
+                  <RefreshCcw size={12} />
+                </button>
+              }
+            />
             {runs.length === 0 ? (
-              <div style={{ padding: '0.75rem 0', fontSize: '0.75rem', color: '#94A3B8' }}>
-                No runs yet.
+              <div style={{ padding: '1rem 0', fontSize: '0.78rem', color: '#94A3B8', textAlign: 'center' }}>
+                No runs yet — click <strong>Run</strong> above to see history here.
               </div>
             ) : (
               <div className="stack-sm">
                 {runs.map(r => {
                   const passed = r.stepResults.filter(s => s.status === 'success').length;
+                  const ok = r.status === 'success';
                   return (
                     <div key={r._id} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.5rem',
-                      padding: '0.4rem', borderRadius: 6, background: '#F8FAFC',
+                      display: 'flex', alignItems: 'center', gap: '0.65rem',
+                      padding: '0.6rem 0.75rem', borderRadius: 8,
+                      background: ok ? '#F0FDF4' : '#FEF2F2',
+                      border: `1px solid ${ok ? '#BBF7D0' : '#FECACA'}`,
                     }}>
-                      {r.status === 'success' ? <CheckCircle2 size={14} color="#10B981" /> : <AlertCircle size={14} color="#EF4444" />}
+                      {ok ? <CheckCircle2 size={16} color="#10B981" /> : <AlertCircle size={16} color="#EF4444" />}
                       <div style={{ flex: 1, minWidth: 0 }}>
-                        <div style={{ fontSize: '0.75rem', fontWeight: 700, color: '#0F172A' }}>
-                          {passed}/{r.stepResults.length} steps · {r.status}
+                        <div style={{ fontSize: '0.78rem', fontWeight: 800, color: '#0F172A' }}>
+                          {passed}/{r.stepResults.length} steps
+                          <span style={{
+                            marginLeft: 6,
+                            fontSize: '0.62rem', fontWeight: 800,
+                            color: ok ? '#15803D' : '#B91C1C',
+                            background: ok ? '#DCFCE7' : '#FEE2E2',
+                            padding: '0.1rem 0.4rem', borderRadius: '999px',
+                            textTransform: 'uppercase', letterSpacing: '0.4px',
+                          }}>
+                            {r.status}
+                          </span>
                         </div>
-                        <div style={{ fontSize: '0.65rem', color: '#94A3B8' }}>
+                        <div style={{ fontSize: '0.68rem', color: '#64748B', marginTop: 2 }}>
                           {new Date(r.startedAt).toLocaleString()}
                         </div>
                       </div>
@@ -574,10 +822,15 @@ const StepRow: React.FC<StepRowProps> = ({ index, step, isLast, onChange, onDele
   const [open, setOpen] = useState(false);
   const editable = step.type === 'input' || step.type === 'change' || step.type === 'navigate' || step.type === 'wait';
   const isLoop = step.type === 'loop-start' || step.type === 'loop-end';
+  const isIf = step.type === 'if-start' || step.type === 'else' || step.type === 'if-end';
+  const isControlFlow = isLoop || isIf;
   return (
     <div style={{
       border: '1px solid #E2E8F0', borderRadius: 8, overflow: 'hidden',
-      background: step.type === 'loop-start' ? '#FEFCE8' : step.type === 'loop-end' ? '#FEFCE8' : 'white',
+      background:
+        isLoop ? '#FEFCE8'
+        : isIf  ? '#EFF6FF'
+        : 'white',
     }}>
       <div
         onClick={() => setOpen(o => !o)}
@@ -603,7 +856,7 @@ const StepRow: React.FC<StepRowProps> = ({ index, step, isLast, onChange, onDele
         <div onClick={e => e.stopPropagation()} style={{ display: 'flex', gap: '0.2rem' }}>
           <button className="btn btn-secondary btn-icon-only btn-sm" onClick={() => onMove(-1)} disabled={index === 0} title="Move up">↑</button>
           <button className="btn btn-secondary btn-icon-only btn-sm" onClick={() => onMove(1)} disabled={isLast} title="Move down">↓</button>
-          {!isLoop && (
+          {!isControlFlow && (
             <button className="btn btn-secondary btn-icon-only btn-sm" onClick={onReRecord} title="Re-record this step">
               <Circle size={11} color="#EF4444" />
             </button>
@@ -633,7 +886,13 @@ const StepRow: React.FC<StepRowProps> = ({ index, step, isLast, onChange, onDele
           </div>
         </div>
       )}
-      {open && !isLoop && (
+      {open && step.type === 'if-start' && (
+        <IfConditionEditor
+          condition={step.condition}
+          onChange={(condition) => onChange({ condition })}
+        />
+      )}
+      {open && !isControlFlow && (
         <div style={{ padding: '0.75rem', borderTop: '1px solid #F1F5F9', background: '#FAFBFC', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.6rem' }}>
           <label style={labelStyle}>
             Label (optional)
@@ -694,6 +953,110 @@ const StepRow: React.FC<StepRowProps> = ({ index, step, isLast, onChange, onDele
           </div>
         </div>
       )}
+    </div>
+  );
+};
+
+/* ----------------------------------------------------------------------
+ *  If-condition editor — drives the `if-start` block.
+ *
+ *  Defaults to a variable comparison so the attendance use-case works
+ *  out of the box: source=variable, variable=pct, operator='<', value=75
+ *  ⇒ "if {{pct}} < 75 then run the inner steps".
+ * ------------------------------------------------------------------- */
+const IfConditionEditor: React.FC<{
+  condition?: IfCondition;
+  onChange: (c: IfCondition) => void;
+}> = ({ condition, onChange }) => {
+  const c: IfCondition = condition ?? { source: 'variable', operator: '==', value: '' };
+
+  const update = (patch: Partial<IfCondition>) => onChange({ ...c, ...patch });
+  const isElementCheck = c.source === 'element-text' || c.source === 'element-exists';
+
+  return (
+    <div style={{
+      padding: '0.85rem', borderTop: '1px solid #BFDBFE',
+      background: '#F5F9FF',
+      display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.55rem',
+    }}>
+      <label style={labelStyle}>
+        Source
+        <select
+          style={inputStyle}
+          value={c.source}
+          onChange={e => update({ source: e.target.value as IfCondition['source'] })}
+        >
+          <option value="variable">Variable</option>
+          <option value="element-text">Element text</option>
+          <option value="element-exists">Element exists</option>
+        </select>
+      </label>
+      {c.source === 'variable' ? (
+        <label style={labelStyle}>
+          Variable
+          <input
+            type="text" style={inputStyle} value={c.variable ?? ''}
+            onChange={e => update({ variable: e.target.value })}
+            placeholder="e.g. pct"
+          />
+        </label>
+      ) : (
+        <label style={labelStyle}>
+          Selector (CSS)
+          <input
+            type="text" style={inputStyle} value={c.selector ?? ''}
+            onChange={e => update({ selector: e.target.value })}
+            placeholder=".at-risk"
+          />
+        </label>
+      )}
+      <label style={labelStyle}>
+        Operator
+        <select
+          style={inputStyle}
+          value={c.operator}
+          onChange={e => update({ operator: e.target.value as IfCondition['operator'] })}
+        >
+          {c.source === 'element-exists' ? (
+            <>
+              <option value="exists">exists</option>
+              <option value="not-exists">does NOT exist</option>
+            </>
+          ) : (
+            <>
+              <option value="==">== (equals)</option>
+              <option value="!=">!= (not equal)</option>
+              <option value="<">&lt; (less than)</option>
+              <option value="<=">&lt;= (at most)</option>
+              <option value=">">&gt; (greater than)</option>
+              <option value=">=">&gt;= (at least)</option>
+              <option value="contains">contains</option>
+              <option value="not-contains">does NOT contain</option>
+            </>
+          )}
+        </select>
+      </label>
+      {c.source !== 'element-exists' && (
+        <label style={{ ...labelStyle, gridColumn: '1 / -1' }}>
+          Compared against
+          <input
+            type="text" style={inputStyle} value={c.value ?? ''}
+            onChange={e => update({ value: e.target.value })}
+            placeholder="75"
+          />
+        </label>
+      )}
+      <div style={{ gridColumn: '1 / -1', fontSize: '0.7rem', color: '#1E3A8A', background: '#DBEAFE', padding: '0.5rem 0.7rem', borderRadius: 5, lineHeight: 1.4 }}>
+        <strong>Attendance use-case:</strong> wrap this block inside a row-loop over the AttendanceStudents
+        roster, then check <code>{`{{pct}} < 75`}</code> to run the "send warning email" steps only for
+        at-risk students. Switch to <em>Element text</em> to read a DOM value such as the row's badge.
+        {isElementCheck && c.source === 'element-text' && (
+          <div style={{ marginTop: 4 }}>
+            <em>Element text</em> reads <code>textContent</code> from the matched selector — strip
+            any unit (<code>%, $</code>) in your comparison value, or use <em>contains</em>.
+          </div>
+        )}
+      </div>
     </div>
   );
 };

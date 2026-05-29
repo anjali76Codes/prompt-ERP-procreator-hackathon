@@ -1,5 +1,5 @@
 import React from 'react';
-import { Search, HelpCircle, Settings } from 'lucide-react';
+import { Search, HelpCircle } from 'lucide-react';
 import { useAuth } from '../../lib/auth/AuthContext';
 import { NotificationBell } from './NotificationBell';
 import type { AppUser } from '../../lib/auth/types';
@@ -31,7 +31,7 @@ interface TopBarProps {
  * Every page renders the same TopBar shell.
  * - Left slot: page identity (icon + title) OR the global search.
  * - Middle slot: page-specific actions (filters, primary buttons).
- * - Right slot: ALWAYS bell + help + settings + user — never overridden.
+ * - Right slot: ALWAYS bell + help + user — never overridden.
  *
  * Pages should never hand-roll their own .dashboard-topbar; pass slots instead.
  */
@@ -76,7 +76,6 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="topbar-icons">
           <NotificationBell />
           <HelpCircle size={20} />
-          <Settings size={20} />
         </div>
         <div className="topbar-user">
           <div className="topbar-user-info">

@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
   Circle, Pause, Play, Square, Save, X, Trash2, ChevronDown, ChevronUp,
-  CheckCircle2, AlertCircle, Loader,
+  CheckCircle2, AlertCircle, Loader, Repeat,
 } from 'lucide-react';
 import { useRecorder } from '../../../lib/automation/recorder/RecorderContext';
 import s from './automation.module.css';
@@ -111,6 +111,29 @@ export const RecorderOverlay: React.FC = () => {
           )}
         </div>
       </div>
+
+      {!collapsed && r.loopInfo && (
+        <div
+          style={{
+            display: 'flex', alignItems: 'center', gap: '0.5rem',
+            padding: '0.5rem 0.75rem',
+            background: 'linear-gradient(90deg, rgba(0, 74, 198, 0.08) 0%, rgba(37, 99, 235, 0.04) 100%)',
+            borderBottom: '1px solid rgba(0, 74, 198, 0.18)',
+            color: 'var(--primary, #004ac6)',
+            fontWeight: 700, fontSize: '0.72rem',
+          }}
+        >
+          <Repeat size={14} className="spin" style={{ animation: 'spin 2s linear infinite' }} />
+          <span>
+            Looping — iteration <strong>{r.loopInfo.iteration}</strong> of <strong>{r.loopInfo.total}</strong>
+            {r.loopInfo.rowSelector && (
+              <span style={{ color: '#64748B', fontWeight: 500, marginLeft: 4 }}>
+                ({r.loopInfo.rowSelector})
+              </span>
+            )}
+          </span>
+        </div>
+      )}
 
       {!collapsed && (
         <>

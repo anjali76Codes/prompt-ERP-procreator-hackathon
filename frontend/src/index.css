@@ -103,6 +103,14 @@
   padding: 0;
 }
 
+/* Form controls don't inherit font-family by default in most browsers
+ * (they fall back to the UA's monospace/serif). Force every interactive
+ * element to follow the site's Inter so chat buttons, table cells, and
+ * inline pipeline labels match the surrounding text. */
+button, input, textarea, select, table {
+  font-family: inherit;
+}
+
 body {
   font-family: var(--font-family);
   background-color: var(--bg-color);

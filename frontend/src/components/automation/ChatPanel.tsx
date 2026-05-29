@@ -1,13 +1,34 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Sparkles, MoreVertical, Loader2, Cpu, User, Paperclip, Image as ImageIcon, Send, TrendingUp, X,
-  ClipboardList, BellRing, CloudUpload, Mic,
+  Sparkles, Loader2, Cpu, User, Paperclip, Image as ImageIcon, Send, Square, TrendingUp, X,
+  ClipboardList, BellRing, CloudUpload, Mic, MicOff,
 } from 'lucide-react';
 import s from './Automation.module.css';
 import type { ChatMessage, ChatInsight } from '../../lib/automation/types';
 import type { PermissionResponse } from '../../lib/automation/agentApi';
 import { ChatExtras } from './ChatExtras';
 import { InlinePipeline } from './InlinePipeline';
+
+/* Web Speech API isn't in lib.dom yet for all TS targets — declare just what we touch. */
+interface SpeechRecognitionResultLike {
+  0: { transcript: string };
+  isFinal: boolean;
+}
+interface SpeechRecognitionEventLike {
+  resultIndex: number;
+  results: ArrayLike<SpeechRecognitionResultLike>;
+}
+interface SpeechRecognitionLike {
+  continuous: boolean;
+  interimResults: boolean;
+  lang: string;
+  onresult: ((e: SpeechRecognitionEventLike) => void) | null;
+  onerror: ((e: unknown) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+type SpeechRecognitionCtor = new () => SpeechRecognitionLike;
 
 /* ------------------------------------------------------------------ *
  *  Landing-screen prompt cards (shown when chat is empty).
@@ -52,20 +73,62 @@ const SLASH_COMMANDS: { command: string; description: string }[] = [
 interface Props {
   messages: ChatMessage[];
   split: boolean;
+  isGenerating?: boolean;
   onSend: (text: string, files?: File[]) => void;
+  onStop?: () => void;
   onPermissionResponse?: (messageId: string, pr: PermissionResponse) => void;
   onInsightAction?: (insight: ChatInsight) => void;
 }
 
 export const ChatPanel: React.FC<Props> = ({
-  messages, split, onSend, onPermissionResponse, onInsightAction,
+  messages, split, isGenerating, onSend, onStop, onPermissionResponse, onInsightAction,
 }) => {
   const [text, setText] = useState('');
   const [files, setFiles] = useState<File[]>([]);
+  const [listening, setListening] = useState(false);
+  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages]);
+
+  // Stop the recognition stream if the panel unmounts mid-listen.
+  useEffect(() => () => { recognitionRef.current?.stop(); }, []);
+
+  const toggleVoice = () => {
+    // Web Speech API is Chromium-only; fail loud rather than silent.
+    const Ctor: SpeechRecognitionCtor | undefined =
+      (window as unknown as { SpeechRecognition?: SpeechRecognitionCtor }).SpeechRecognition
+      ?? (window as unknown as { webkitSpeechRecognition?: SpeechRecognitionCtor }).webkitSpeechRecognition;
+    if (!Ctor) {
+      alert('Voice input is not supported in this browser. Try Chrome or Edge.');
+      return;
+    }
+    if (listening) {
+      recognitionRef.current?.stop();
+      return;
+    }
+    const rec = new Ctor();
+    rec.continuous = false;
+    rec.interimResults = true;
+    rec.lang = 'en-US';
+    rec.onresult = (e) => {
+      let finalChunk = '';
+      let interimChunk = '';
+      for (let i = e.resultIndex; i < e.results.length; i++) {
+        const r = e.results[i];
+        if (r.isFinal) finalChunk += r[0].transcript;
+        else interimChunk += r[0].transcript;
+      }
+      if (finalChunk) setText(prev => (prev ? prev + ' ' : '') + finalChunk.trim());
+      else if (interimChunk) setText(interimChunk);
+    };
+    rec.onerror = () => { setListening(false); };
+    rec.onend = () => { setListening(false); recognitionRef.current = null; };
+    recognitionRef.current = rec;
+    setListening(true);
+    rec.start();
+  };
 
   // NB: convert the FileList to an array *here*, synchronously. If we defer
   // it into the setState updater, the input's `value=''` reset below empties
@@ -89,19 +152,6 @@ export const ChatPanel: React.FC<Props> = ({
 
   return (
     <div className={`${s.chatCard} ${split ? s.split : s.full}`}>
-      <div className={s.chatHeader}>
-        <div className={s.chatHeaderLeft}>
-          <div className={s.aiAvatar}><Sparkles size={18} /></div>
-          <div>
-            <div className={s.chatTitle}>Automation Assistant</div>
-            <div className={s.chatStatus}>
-              <span className={s.dot} /> ONLINE & THINKING
-            </div>
-          </div>
-        </div>
-        <MoreVertical size={18} color="#94A3B8" style={{ cursor: 'pointer' }} />
-      </div>
-
       <div className={s.chatList}>
         {messages.length === 0 && (
           <div style={{
@@ -268,7 +318,7 @@ export const ChatPanel: React.FC<Props> = ({
         />
         <form onSubmit={submit} className={s.inputBox}>
           <textarea
-            placeholder="Type a command (e.g. /quiz) or ask a question..."
+            placeholder={listening ? 'Listening… speak now' : 'Type a command (e.g. /quiz) or ask a question...'}
             value={text}
             onChange={e => setText(e.target.value)}
             onKeyDown={e => {
@@ -290,12 +340,40 @@ export const ChatPanel: React.FC<Props> = ({
                 style={{ cursor: 'pointer' }}
                 onClick={() => fileRef.current?.click()}
               />
-              <Mic size={18} color="#94A3B8" />
+              <button
+                type="button"
+                onClick={toggleVoice}
+                aria-label={listening ? 'Stop voice input' : 'Start voice input'}
+                title={listening ? 'Stop voice input' : 'Start voice input'}
+                style={{
+                  background: 'transparent', border: 'none', padding: 0,
+                  display: 'inline-flex', alignItems: 'center',
+                  cursor: 'pointer',
+                  color: listening ? '#EF4444' : '#94A3B8',
+                }}
+              >
+                {listening
+                  ? <MicOff size={18} className="pulse-dot" />
+                  : <Mic size={18} />}
+              </button>
             </div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.85rem' }}>
-              <button type="submit" className={s.sendBtn} aria-label="Send">
-                <Send size={15} />
-              </button>
+              {isGenerating ? (
+                <button
+                  type="button"
+                  className={s.sendBtn}
+                  aria-label="Stop generating"
+                  title="Stop generating"
+                  onClick={() => onStop?.()}
+                  style={{ background: '#EF4444', boxShadow: '0 4px 10px rgba(239, 68, 68, 0.3)' }}
+                >
+                  <Square size={13} fill="white" />
+                </button>
+              ) : (
+                <button type="submit" className={s.sendBtn} aria-label="Send">
+                  <Send size={15} />
+                </button>
+              )}
             </div>
           </div>
         </form>

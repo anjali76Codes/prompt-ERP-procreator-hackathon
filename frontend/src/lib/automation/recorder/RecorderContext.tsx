@@ -4,7 +4,7 @@ import React, {
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
 import { Recorder } from './recorder';
-import { Player } from './player';
+import { Player, type LoopInfo } from './player';
 import * as api from './api';
 import type {
   Automation, AutomationVariable, PlayerState, PlayerStepState, RecordedStep,
@@ -30,6 +30,8 @@ export interface RecorderContextValue {
   /** Per-step playback state, keyed by step id. */
   playbackState: Record<string, PlayerStepState>;
   logs: Array<{ ts: string; level: 'info' | 'warn' | 'error'; message: string; stepId?: string }>;
+  /** Live loop info during playback — populated while iterating, null otherwise. */
+  loopInfo: LoopInfo | null;
 
   startRecording: (automation: Automation) => void;
   pauseRecording: () => void;
@@ -64,6 +66,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [variables, setVariables] = useState<AutomationVariable[]>([]);
   const [playbackState, setPlaybackState] = useState<Record<string, PlayerStepState>>({});
   const [logs, setLogs] = useState<RecorderContextValue['logs']>([]);
+  const [loopInfo, setLoopInfo] = useState<LoopInfo | null>(null);
 
   const recorderRef = useRef<Recorder | null>(null);
   const playerRef = useRef<Player | null>(null);
@@ -107,6 +110,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setVariables(automation.variables);
     setPlaybackState({});
     setLogs([]);
+    setLoopInfo(null);
     setPlayerState('idle');
     setRecorderState('recording');
     ensureRecorder().start();
@@ -167,6 +171,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setVariables(automation.variables);
     setPlaybackState({});
     setLogs([]);
+    setLoopInfo(null);
     setPlayerState('playing');
     abortRef.current = false;
     const startedAt = new Date().toISOString();
@@ -187,11 +192,13 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         }));
       },
       onLog: (l) => setLogs(prev => [...prev, { ts: new Date().toISOString(), ...l }]),
+      onLoopUpdate: (info) => setLoopInfo(info),
     });
 
     const end = upTo ?? automation.steps.length;
     const { ok, results } = await playerRef.current.run(automation.steps, 0, end);
     setPlayerState(ok ? 'success' : 'failed');
+    setLoopInfo(null);
 
     // Only record + toast the run when playing the whole automation.
     if (upTo === undefined) {
@@ -220,6 +227,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const stopPlayback = useCallback(() => {
     abortRef.current = true;
     setPlayerState('idle');
+    setLoopInfo(null);
   }, []);
 
   const reRecordStep = useCallback(async (
@@ -232,6 +240,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     setVariables(automation.variables);
     setPlaybackState({});
     setLogs([]);
+    setLoopInfo(null);
     setPlayerState('playing');
     abortRef.current = false;
 
@@ -249,6 +258,7 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         },
       })),
       onLog: (l) => setLogs(prev => [...prev, { ts: new Date().toISOString(), ...l }]),
+      onLoopUpdate: (info) => setLoopInfo(info),
     });
 
     if (stepIndex > 0) {
@@ -273,11 +283,11 @@ export const RecorderProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   }, []);
 
   const value = useMemo<RecorderContextValue>(() => ({
-    recorderState, playerState, current, steps, variables, playbackState, logs,
+    recorderState, playerState, current, steps, variables, playbackState, logs, loopInfo,
     startRecording, pauseRecording, resumeRecording, stopRecording, cancelRecording, removeStep,
     startPlayback, stopPlayback, reRecordStep,
   }), [
-    recorderState, playerState, current, steps, variables, playbackState, logs,
+    recorderState, playerState, current, steps, variables, playbackState, logs, loopInfo,
     startRecording, pauseRecording, resumeRecording, stopRecording, cancelRecording, removeStep,
     startPlayback, stopPlayback, reRecordStep,
   ]);

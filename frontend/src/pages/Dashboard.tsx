@@ -9,6 +9,7 @@ import { ScheduleTable } from '../components/dashboard/ScheduleTable';
 import { DeadlineList } from '../components/dashboard/DeadlineList';
 import { AlertBanner } from '../components/dashboard/AlertBanner';
 import { TeacherDashboard } from './TeacherDashboard';
+import { StudentDashboard } from './StudentDashboard';
 import { useRole } from '../lib/useRole';
 
 const SCHEDULE = [
@@ -26,7 +27,9 @@ const DEADLINES = [
 export const Dashboard: React.FC = () => {
   const { role } = useRole();
   if (role === 'teacher') return <TeacherDashboard />;
+  if (role === 'student') return <StudentDashboard />;
 
+  // Admin / fallback — keep the legacy demo layout so admin still sees something.
   return (
     <AppLayout
       pageIcon={<LayoutDashboard size={18} />}

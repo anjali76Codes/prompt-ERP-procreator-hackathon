@@ -256,6 +256,7 @@ export interface AutomationEngineState {
   logs: ExecutionLog[];
   templates: WorkflowTemplate[];
   isPaused: boolean;
+  isGenerating: boolean;
   showLogs: boolean;
   suggestedPrompts: readonly string[];
   sessions: ChatSessionSummary[];
@@ -264,6 +265,7 @@ export interface AutomationEngineState {
 
 export interface AutomationEngineActions {
   send: (text: string, files?: File[]) => void;
+  stop: () => void;
   sendPermissionResponse: (messageId: string, pr: PermissionResponse) => void;
   togglePause: () => void;
   toggleLogs: () => void;
@@ -276,11 +278,28 @@ export interface AutomationEngineActions {
   removeSession: (id: string) => Promise<void>;
 }
 
+/* Persist the last-active chat session ID so a refresh / nav-away-and-back
+ * resumes where the user left off. Cleared only when the user explicitly
+ * starts a new chat. */
+const ACTIVE_SESSION_LS_KEY = 'campusos.chat.activeSessionId';
+const readActiveSession = (): string | null => {
+  try { return window.localStorage.getItem(ACTIVE_SESSION_LS_KEY); }
+  catch { return null; }
+};
+const writeActiveSession = (id: string | null): void => {
+  try {
+    if (id) window.localStorage.setItem(ACTIVE_SESSION_LS_KEY, id);
+    else window.localStorage.removeItem(ACTIVE_SESSION_LS_KEY);
+  } catch { /* ignore */ }
+};
+
 export const useAutomationEngine = (): AutomationEngineState & AutomationEngineActions => {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [workflow, setWorkflow] = useState<Workflow | null>(null);
   const [logs, setLogs] = useState<ExecutionLog[]>([]);
   const [isPaused, setPaused] = useState(false);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const abortRef = useRef<AbortController | null>(null);
   const [showLogs, setShowLogs] = useState(false);
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   // One conversation/session for the lifetime of this mounted page (until "New chat").
@@ -289,7 +308,11 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
   // message; created on demand so we don't spam empty rows.
   const [dbSessionId, setDbSessionId] = useState<string | null>(null);
   const dbSessionIdRef = useRef<string | null>(null);
-  useEffect(() => { dbSessionIdRef.current = dbSessionId; }, [dbSessionId]);
+  useEffect(() => {
+    dbSessionIdRef.current = dbSessionId;
+    // Mirror to localStorage so a hard refresh / nav-back rehydrates the same chat.
+    writeActiveSession(dbSessionId);
+  }, [dbSessionId]);
 
   const refreshSessions = useCallback(async () => {
     try {
@@ -355,9 +378,15 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
       text: 'Working on it — detecting intent and calling the right tools…',
     }]);
 
+    // Set up an abort controller so the user can cancel the in-flight request.
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+    setIsGenerating(true);
+
     const run = hasFiles
-      ? sendChatWithFiles(userText, sessionId.current, files!)
-      : sendChat(userText, sessionId.current, permissionResponse);
+      ? sendChatWithFiles(userText, sessionId.current, files!, controller.signal)
+      : sendChat(userText, sessionId.current, permissionResponse, controller.signal);
 
     run
       .then(resp => {
@@ -389,6 +418,17 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
         });
       })
       .catch((err: unknown) => {
+        // User-initiated abort: just drop the loading bubble — don't show an error.
+        const isAbort =
+          (err instanceof DOMException && err.name === 'AbortError')
+          || (err instanceof Error && err.name === 'AbortError');
+        if (isAbort) {
+          setMessages(prev => prev.filter(m => m.id !== loadingId).concat({
+            id: uid(), role: 'ai', createdAt: Date.now(),
+            text: '⏹ Stopped.',
+          }));
+          return;
+        }
         const message =
           err instanceof AgentApiError ? err.message
           : err instanceof Error ? err.message
@@ -397,7 +437,16 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
           id: uid(), role: 'ai', createdAt: Date.now(),
           text: `⚠️ ${message}`,
         }));
+      })
+      .finally(() => {
+        if (abortRef.current === controller) abortRef.current = null;
+        setIsGenerating(false);
       });
+  }, []);
+
+  const stop = useCallback(() => {
+    abortRef.current?.abort();
+    abortRef.current = null;
   }, []);
 
   const send = useCallback((rawText: string, files?: File[]) => {
@@ -448,6 +497,7 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
     sessionId.current = newSessionId();
     setDbSessionId(null);
     dbSessionIdRef.current = null;
+    writeActiveSession(null);
     setMessages([]);
     setWorkflow(null);
     setLogs([]);
@@ -492,13 +542,23 @@ export const useAutomationEngine = (): AutomationEngineState & AutomationEngineA
     }
   }, [newChat, refreshSessions]);
 
+  // Rehydrate from localStorage on mount: if the user had an active session
+  // before refresh / nav-away, resume it so messages + agent thread persist.
+  // Runs once — `loadSession` is stable (empty dep list).
+  useEffect(() => {
+    const savedId = readActiveSession();
+    if (!savedId) return;
+    void loadSession(savedId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   return {
-    messages, workflow, logs, isPaused, showLogs,
+    messages, workflow, logs, isPaused, isGenerating, showLogs,
     templates: SAVED_TEMPLATES,
     suggestedPrompts: SUGGESTED_PROMPTS,
     sessions,
     activeSessionId: dbSessionId,
-    send, sendPermissionResponse,
+    send, stop, sendPermissionResponse,
     togglePause, toggleLogs, deploy, runTemplate, highlightStudents,
     newChat, loadSession, refreshSessions, removeSession,
   };

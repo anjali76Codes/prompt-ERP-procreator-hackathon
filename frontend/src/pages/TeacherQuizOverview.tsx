@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import {
-  FileQuestion, Plus, Filter, LayoutGrid, List, Eye, Trash2, EyeOff, Copy, BarChart2,
+  FileQuestion, Plus, Filter, LayoutGrid, List, Eye, Trash2, Copy, BarChart2,
   X, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
@@ -287,7 +287,10 @@ export const TeacherQuizOverview: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', borderTop: '1px solid #F1F5F9', paddingTop: '1rem', alignItems: 'center' }}>
                 <div style={{ display: 'flex', gap: '0.75rem' }}>
                   {quiz.status === 'Published' && (
-                    <button style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}>
+                    <button
+                      onClick={() => navigate(`/quizzes/${quiz.id}/analytics`)}
+                      style={{ backgroundColor: 'var(--primary)', color: 'white', border: 'none', borderRadius: 'var(--radius-md)', padding: '0.5rem 1rem', fontSize: '0.8rem', fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '0.35rem' }}
+                    >
                       <BarChart2 size={14} /> View Analytics
                     </button>
                   )}
@@ -321,10 +324,7 @@ export const TeacherQuizOverview: React.FC = () => {
                   >
                     <Eye size={18} />
                   </button>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
-                    <EyeOff size={18} />
-                  </button>
-                  <button 
+                  <button
                     onClick={() => handleDeleteQuiz(quiz.id)}
                     style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#EF4444' }}
                   >

@@ -33,17 +33,17 @@ const fmtCell = (v: unknown): string => {
 const TableView: React.FC<{ table: ChatTable }> = ({ table }) => (
   <div style={{
     background: 'white',
-    border: '1px solid #E2E8F0',
+    border: '1px solid #CBD5E1',
     borderRadius: '0.65rem',
     overflow: 'hidden',
   }}>
     {table.title && (
       <div style={{
         padding: '0.55rem 0.9rem',
-        background: '#F8FAFC',
-        borderBottom: '1px solid #E2E8F0',
+        background: '#F1F5F9',
+        borderBottom: '1px solid #CBD5E1',
         fontSize: '0.72rem', fontWeight: 800, letterSpacing: '0.5px',
-        color: '#475569', textTransform: 'uppercase',
+        color: '#334155', textTransform: 'uppercase',
       }}>
         {table.title}
       </div>
@@ -52,36 +52,47 @@ const TableView: React.FC<{ table: ChatTable }> = ({ table }) => (
       <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.82rem' }}>
         <thead>
           <tr>
-            {table.columns.map((c, i) => (
-              <th key={i} style={{
-                textAlign: 'left',
-                padding: '0.55rem 0.9rem',
-                fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.4px',
-                color: '#64748B', textTransform: 'uppercase',
-                borderBottom: '1px solid #F1F5F9',
-                background: '#FAFBFC',
-                whiteSpace: 'nowrap',
-              }}>
-                {c}
-              </th>
-            ))}
+            {table.columns.map((c, i) => {
+              const isLast = i === table.columns.length - 1;
+              return (
+                <th key={i} style={{
+                  textAlign: 'left',
+                  padding: '0.55rem 0.9rem',
+                  fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.4px',
+                  color: '#475569', textTransform: 'uppercase',
+                  borderBottom: '1px solid #CBD5E1',
+                  borderRight: isLast ? 'none' : '1px solid #E2E8F0',
+                  background: '#FAFBFC',
+                  whiteSpace: 'nowrap',
+                }}>
+                  {c}
+                </th>
+              );
+            })}
           </tr>
         </thead>
         <tbody>
-          {table.rows.map((row, ri) => (
-            <tr key={ri}>
-              {row.map((cell, ci) => (
-                <td key={ci} style={{
-                  padding: '0.55rem 0.9rem',
-                  borderBottom: '1px solid #F1F5F9',
-                  color: '#0F172A',
-                  whiteSpace: 'nowrap',
-                }}>
-                  {fmtCell(cell)}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {table.rows.map((row, ri) => {
+            const isLastRow = ri === table.rows.length - 1;
+            return (
+              <tr key={ri}>
+                {row.map((cell, ci) => {
+                  const isLastCol = ci === row.length - 1;
+                  return (
+                    <td key={ci} style={{
+                      padding: '0.55rem 0.9rem',
+                      borderBottom: isLastRow ? 'none' : '1px solid #E2E8F0',
+                      borderRight: isLastCol ? 'none' : '1px solid #E2E8F0',
+                      color: '#0F172A',
+                      whiteSpace: 'nowrap',
+                    }}>
+                      {fmtCell(cell)}
+                    </td>
+                  );
+                })}
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
