@@ -1,5 +1,13 @@
-const RAW_BASE = (import.meta.env.VITE_API_URL as string | undefined)
-  ?? (import.meta.env.DEV ? 'http://18.234.50.17:3000/api' : '/api');
+const normalizeApiBase = (value: string | undefined, fallback: string): string => {
+  if (!value) return fallback;
+  if (import.meta.env.DEV) return value;
+  return value.startsWith('/') || value.startsWith('https://') ? value : fallback;
+};
+
+const RAW_BASE = normalizeApiBase(
+  import.meta.env.VITE_API_URL as string | undefined,
+  import.meta.env.DEV ? 'http://18.234.50.17:3000/api' : '/api',
+);
 export const API_BASE = RAW_BASE.replace(/\/$/, '');
 
 const TOKEN_KEY = 'auth:token';

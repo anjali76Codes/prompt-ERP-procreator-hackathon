@@ -8,9 +8,16 @@
 
 import { getToken } from '../api';
 
-const RAW_AI_BASE =
-  (import.meta.env.VITE_AI_API_URL as string | undefined)
-  ?? (import.meta.env.DEV ? 'http://18.234.50.17:8000/python-app' : '/python-app');
+const normalizeAiBase = (value: string | undefined, fallback: string): string => {
+  if (!value) return fallback;
+  if (import.meta.env.DEV) return value;
+  return value.startsWith('/') || value.startsWith('https://') ? value : fallback;
+};
+
+const RAW_AI_BASE = normalizeAiBase(
+  import.meta.env.VITE_AI_API_URL as string | undefined,
+  import.meta.env.DEV ? 'http://18.234.50.17:8000/python-app' : '/python-app',
+);
 export const AI_BASE = RAW_AI_BASE.replace(/\/$/, '');
 
 export interface AgentToolStep {
