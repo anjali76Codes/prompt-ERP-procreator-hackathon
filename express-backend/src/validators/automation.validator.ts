@@ -13,9 +13,24 @@ const rowBindingZ = z.object({
   attr: z.string().optional(),
 });
 
+const ifConditionZ = z.object({
+  source: z.enum(['variable', 'element-text', 'element-exists']),
+  variable: z.string().optional(),
+  selector: z.string().optional(),
+  operator: z.enum([
+    '==', '!=', '<', '<=', '>', '>=',
+    'contains', 'not-contains', 'exists', 'not-exists',
+  ]),
+  value: z.string().optional(),
+});
+
 export const stepSchema = z.object({
   id: z.string().min(1),
-  type: z.enum(['click', 'input', 'change', 'submit', 'navigate', 'wait', 'keypress', 'assert', 'loop-start', 'loop-end']),
+  type: z.enum([
+    'click', 'input', 'change', 'submit', 'navigate', 'wait', 'keypress', 'assert',
+    'loop-start', 'loop-end',
+    'if-start', 'else', 'if-end',
+  ]),
   selectors: z.array(selectorSchema).default([]),
   visibleText: z.string().optional(),
   value: z.string().optional(),
@@ -27,6 +42,8 @@ export const stepSchema = z.object({
   rowSelector: z.string().optional(),
   rowBindings: z.array(rowBindingZ).optional(),
   loopId: z.string().optional(),
+  condition: ifConditionZ.optional(),
+  ifId: z.string().optional(),
 });
 
 export const variableSchema = z.object({

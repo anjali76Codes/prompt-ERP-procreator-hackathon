@@ -10,7 +10,21 @@ export type StepType =
   | 'keypress'
   | 'assert'
   | 'loop-start'
-  | 'loop-end';
+  | 'loop-end'
+  | 'if-start'
+  | 'else'
+  | 'if-end';
+
+/** Conditional check evaluated by an `if-start` step. */
+export interface IfCondition {
+  source: 'variable' | 'element-text' | 'element-exists';
+  variable?: string;
+  selector?: string;
+  operator:
+    | '==' | '!=' | '<' | '<=' | '>' | '>='
+    | 'contains' | 'not-contains' | 'exists' | 'not-exists';
+  value?: string;
+}
 
 /** How a per-row variable is extracted from a matched row element. */
 export interface RowBinding {
@@ -53,6 +67,10 @@ export interface AutomationStep {
   rowBindings?: RowBinding[];
   /** loop-start/loop-end pairing id (so the player can find the matching close). */
   loopId?: string;
+  /** if-start only: condition evaluated to choose the branch. */
+  condition?: IfCondition;
+  /** if-start/else/if-end pairing id. */
+  ifId?: string;
 }
 
 export interface AutomationVariable {
@@ -95,10 +113,33 @@ const rowBindingSchema = new Schema<RowBinding>(
   { _id: false },
 );
 
+const ifConditionSchema = new Schema<IfCondition>(
+  {
+    source: { type: String, enum: ['variable', 'element-text', 'element-exists'], required: true },
+    variable: { type: String },
+    selector: { type: String },
+    operator: {
+      type: String,
+      enum: ['==', '!=', '<', '<=', '>', '>=', 'contains', 'not-contains', 'exists', 'not-exists'],
+      required: true,
+    },
+    value: { type: String },
+  },
+  { _id: false },
+);
+
 const stepSchema = new Schema<AutomationStep>(
   {
     id: { type: String, required: true },
-    type: { type: String, enum: ['click', 'input', 'change', 'submit', 'navigate', 'wait', 'keypress', 'assert', 'loop-start', 'loop-end'], required: true },
+    type: {
+      type: String,
+      enum: [
+        'click', 'input', 'change', 'submit', 'navigate', 'wait', 'keypress', 'assert',
+        'loop-start', 'loop-end',
+        'if-start', 'else', 'if-end',
+      ],
+      required: true,
+    },
     selectors: { type: [selectorSchema], default: [] },
     visibleText: { type: String },
     value: { type: String },
@@ -110,6 +151,8 @@ const stepSchema = new Schema<AutomationStep>(
     rowSelector: { type: String },
     rowBindings: { type: [rowBindingSchema], default: undefined },
     loopId: { type: String },
+    condition: { type: ifConditionSchema, default: undefined },
+    ifId: { type: String },
   },
   { _id: false },
 );

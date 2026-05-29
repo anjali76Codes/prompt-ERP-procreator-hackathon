@@ -9,6 +9,10 @@ const bootstrap = async (): Promise<void> => {
 
   const server = app.listen(env.PORT, () => {
     logger.info(`🚀 Prompt ERP API listening on http://localhost:${env.PORT} (${env.NODE_ENV})`);
+    // Version stamp so you can see in the terminal which build the server
+    // is actually running. If you don't see this line after restarting,
+    // ts-node-dev hasn't picked up the source changes yet.
+    logger.info('   build: 2026-05-29 — /me/student-overview + /notifications are auth-only; GET requests bypass active-status gate');
   });
 
   const shutdown = async (signal: string) => {
