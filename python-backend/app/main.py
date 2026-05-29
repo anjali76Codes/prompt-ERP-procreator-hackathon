@@ -9,9 +9,9 @@ from __future__ import annotations
 from contextlib import asynccontextmanager
 from typing import AsyncIterator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
 
 from app.api import agents as agents_api
 from app.api import grading as grading_api
@@ -23,6 +23,10 @@ from app.core.errors import unhandled_exception_handler
 from app.core.exports import exports_root
 from app.core.logging import configure_logging, get_logger
 from app.tools.builtin import register_builtin_tools
+
+# All HTTP routes live under this prefix — mirrors the Express backend's
+# `/api` convention so the same host can serve both without collisions.
+API_PREFIX = "/python-app"
 
 
 @asynccontextmanager
@@ -75,20 +79,32 @@ def create_app() -> FastAPI:
         )
         return response
 
-    # Serve agent-produced files (PDFs, generated assignments, exports). The
-    # directory is created lazily on first write — pre-create it here so the
-    # mount never fails on startup.
-    app.mount(
-        "/exports",
-        StaticFiles(directory=str(exports_root())),
-        name="exports",
-    )
+    # Serve agent-produced files (PDFs, generated assignments, exports) via a
+    # FileResponse route — `filename=` makes Starlette send
+    # `Content-Disposition: attachment; filename="…"`, so the browser SAVES
+    # the file on click instead of opening it inline. Random uuid filenames
+    # keep the URLs unguessable.
+    exports_dir = exports_root()
 
-    app.include_router(health_api.router)
-    app.include_router(agents_api.router)
-    app.include_router(workflows_api.router)
-    app.include_router(tools_api.router)
-    app.include_router(grading_api.router)
+    @app.get(f"{API_PREFIX}/exports/{{name}}")
+    async def download_export(name: str):  # type: ignore[no-untyped-def]
+        # Path-traversal guard — only files directly inside exports_dir.
+        candidate = (exports_dir / name).resolve()
+        if exports_dir.resolve() not in candidate.parents and candidate != exports_dir.resolve() / name:
+            raise HTTPException(status_code=400, detail="Bad filename")
+        if not candidate.is_file():
+            raise HTTPException(status_code=404, detail="Not found")
+        return FileResponse(
+            candidate,
+            media_type="application/pdf" if name.lower().endswith(".pdf") else "application/octet-stream",
+            filename=name,
+        )
+
+    app.include_router(health_api.router, prefix=API_PREFIX)
+    app.include_router(agents_api.router, prefix=API_PREFIX)
+    app.include_router(workflows_api.router, prefix=API_PREFIX)
+    app.include_router(tools_api.router, prefix=API_PREFIX)
+    app.include_router(grading_api.router, prefix=API_PREFIX)
 
     app.add_exception_handler(Exception, unhandled_exception_handler)
     return app

@@ -15,7 +15,9 @@ from app.tools.erp import (
     grading,
     quizzes,
     resources,
+    student,
     submissions,
+    whatsapp,
 )
 
 
@@ -61,4 +63,14 @@ def erp_tools() -> list[BaseTool]:
         grading.ask_grading_permission,
         grading.publish_proposed_grades,
         grading.publish_one_grade,
+        # Student-facing flows (feed, submit, quiz attempts).
+        student.list_my_assignments_and_notes,
+        student.submit_assignment,
+        student.my_submission_for_assignment,
+        student.list_my_submissions,
+        student.list_my_quizzes,
+        student.start_quiz_attempt,
+        student.submit_quiz_attempt,
+        # WhatsApp (out-of-band notifications via n8n).
+        whatsapp.send_whatsapp_message,
     ]

@@ -92,73 +92,97 @@ const TableView: React.FC<{ table: ChatTable }> = ({ table }) => (
 /*  Attachment                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/**
+ * Force a URL to download with a HUMAN-READABLE filename:
+ *   - Cloudinary: insert `fl_attachment:<basename>` after /upload/. This makes
+ *     Cloudinary respond with `Content-Disposition: attachment; filename="…"`
+ *     containing OUR name (otherwise it falls back to the random public_id
+ *     and the browser saves the file as "file (2)" with no extension).
+ *   - Our own /exports/ route: already sends attachment headers via
+ *     FileResponse(filename=…), no transform needed.
+ * Caller pairs the returned URL with `<a download={filename}>`; the browser
+ * uses the server-provided filename when present, which is what we want.
+ */
+const sanitizeForCloudinary = (raw: string): string => {
+  // Cloudinary parses dots in the fl_attachment value as URL transformation
+  // extensions and returns 400, so strip the extension. The browser saves the
+  // file without `.pdf` but the content is still valid — OS PDF viewers
+  // sniff and open it correctly.
+  const stem = raw.replace(/\.[^./]+$/, '');
+  return stem
+    .replace(/[^a-zA-Z0-9_-]+/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'download';
+};
+
+const forceAttachmentUrl = (url: string, filename?: string): string => {
+  if (!url) return url;
+  if (url.includes('res.cloudinary.com') && url.includes('/upload/')
+      && !url.includes('/upload/fl_attachment')) {
+    const segment = filename
+      ? `fl_attachment:${sanitizeForCloudinary(filename)}`
+      : 'fl_attachment';
+    return url.replace('/upload/', `/upload/${segment}/`);
+  }
+  return url;
+};
+
 const AttachmentCard: React.FC<{ att: ChatAttachment }> = ({ att }) => {
   const isPdf = (att.mimeType ?? '').includes('pdf') || att.url.toLowerCase().endsWith('.pdf');
   const isImg = (att.mimeType ?? '').startsWith('image/');
+  const label = isPdf ? 'PDF' : isImg ? 'Image' : 'File';
+
+  const ensurePdfExt = (name: string): string => {
+    if (!isPdf) return name;
+    return name.toLowerCase().endsWith('.pdf') ? name : `${name}.pdf`;
+  };
+
+  const displayName = ensurePdfExt(att.name || 'download');
+  const downloadUrl = forceAttachmentUrl(att.url, displayName);
 
   return (
     <div style={{
       background: 'white',
       border: '1px solid #E2E8F0',
       borderRadius: '0.65rem',
-      overflow: 'hidden',
+      padding: '0.55rem 0.7rem',
+      display: 'flex', alignItems: 'center', gap: '0.65rem',
     }}>
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '0.65rem',
-        padding: '0.7rem 0.9rem',
-        borderBottom: isPdf || isImg ? '1px solid #F1F5F9' : 'none',
+        width: 38, height: 38, borderRadius: '0.45rem',
+        background: isPdf ? '#FEE2E2' : '#EFF6FF',
+        color: isPdf ? '#B91C1C' : 'var(--primary)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        flexShrink: 0,
+        fontSize: '0.62rem', fontWeight: 800, letterSpacing: '0.5px',
       }}>
-        <div style={{
-          width: 32, height: 32, borderRadius: '0.4rem',
-          background: '#EFF6FF', color: 'var(--primary)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          flexShrink: 0,
-        }}>
-          {isImg ? <ImgIcon size={16} /> : <FileText size={16} />}
-        </div>
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: '0.85rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-            {att.name}
-          </div>
-          <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.1rem' }}>
-            {[att.mimeType, fmtBytes(att.sizeBytes)].filter(Boolean).join(' · ') || 'file'}
-          </div>
-        </div>
-        <a
-          href={att.url}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{
-            display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
-            padding: '0.4rem 0.7rem', borderRadius: '0.4rem',
-            background: '#F1F5F9', color: '#334155',
-            textDecoration: 'none', fontSize: '0.75rem', fontWeight: 700,
-          }}
-        >
-          <Download size={12} /> Open
-        </a>
+        {isImg ? <ImgIcon size={16} /> : (isPdf ? 'PDF' : <FileText size={16} />)}
       </div>
-      {isPdf && (
-        <iframe
-          src={att.url}
-          title={att.name}
-          style={{
-            width: '100%',
-            height: 380,
-            border: 'none',
-            display: 'block',
-            background: '#FAFBFC',
-          }}
-        />
-      )}
-      {isImg && (
-        // eslint-disable-next-line jsx-a11y/img-redundant-alt
-        <img
-          src={att.url}
-          alt={att.name}
-          style={{ width: '100%', maxHeight: 380, objectFit: 'contain', background: '#FAFBFC', display: 'block' }}
-        />
-      )}
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: '0.88rem', fontWeight: 700, color: '#0F172A', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {displayName}
+        </div>
+        <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.1rem' }}>
+          {[label, fmtBytes(att.sizeBytes)].filter(Boolean).join(' · ')}
+        </div>
+      </div>
+      <a
+        href={downloadUrl}
+        download={displayName}
+        // No target="_blank": cross-origin <a download> with attachment-
+        // disposition headers fires the browser's save dialog without
+        // navigating away, which is exactly what we want.
+        style={{
+          display: 'inline-flex', alignItems: 'center', gap: '0.3rem',
+          padding: '0.45rem 0.85rem', borderRadius: '0.45rem',
+          background: 'var(--primary)', color: 'white',
+          textDecoration: 'none', fontSize: '0.78rem', fontWeight: 700,
+          cursor: 'pointer',
+        }}
+      >
+        <Download size={13} /> Download
+      </a>
     </div>
   );
 };

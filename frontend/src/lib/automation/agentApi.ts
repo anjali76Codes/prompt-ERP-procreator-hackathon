@@ -9,7 +9,7 @@
 import { getToken } from '../api';
 
 const RAW_AI_BASE =
-  (import.meta.env.VITE_AI_API_URL as string | undefined) ?? 'http://localhost:8000';
+  (import.meta.env.VITE_AI_API_URL as string | undefined) ?? 'http://localhost:8000/python-app';
 export const AI_BASE = RAW_AI_BASE.replace(/\/$/, '');
 
 export interface AgentToolStep {
