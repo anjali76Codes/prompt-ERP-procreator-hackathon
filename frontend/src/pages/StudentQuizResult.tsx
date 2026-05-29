@@ -17,7 +17,7 @@ export const StudentQuizResult: React.FC = () => {
       setLoading(true);
       try {
         const api = await import('../lib/quiz/api');
-        const res = await api.getAttempt(id);
+        const res = await api.getStudentAttempt(id);
         if (!mounted) return;
         setAttempt(res.attempt);
 
@@ -26,7 +26,7 @@ export const StudentQuizResult: React.FC = () => {
         const quizRef = typeof quizId === 'object' ? quizId?._id : quizId;
         if (quizRef) {
           try {
-            const qRes = await api.getQuiz(quizRef);
+            const qRes = await api.getStudentQuiz(quizRef);
             if (mounted) setQuiz(qRes.quiz);
           } catch (e) {
             console.error('Failed to load quiz for result', e);

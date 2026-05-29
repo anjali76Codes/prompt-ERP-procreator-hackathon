@@ -398,6 +398,144 @@ export const findAttempt = async (
   return a;
 };
 
+/**
+ * Student-safe quiz fetch. Confirms the quiz is published, that the
+ * caller belongs to the quiz's division, and STRIPS the `isCorrect`
+ * flag from every option before returning so students can't read the
+ * answers off the network response.
+ */
+export const findQuizForStudent = async (
+  quizId: string,
+  studentId: string
+): Promise<Record<string, unknown>> => {
+  const [quiz, student] = await Promise.all([
+    Quiz.findById(quizId).populate(POPULATE),
+    Student.findById(studentId).select('divisionRef'),
+  ]);
+
+  if (!quiz) throw NotFound('Quiz not found');
+  if (quiz.status !== 'published') {
+    throw Forbidden('This quiz is not available yet.');
+  }
+  if (!student) throw Forbidden('Student profile not found');
+  if (!student.divisionRef || student.divisionRef.toString() !== quiz.division._id.toString()) {
+    throw Forbidden('This quiz is for a different division.');
+  }
+
+  // Strip `isCorrect` from options — leaking it would let the student
+  // read the answer key straight out of the network response.
+  const safe = quiz.toObject();
+  if (Array.isArray(safe.questions)) {
+    safe.questions = safe.questions.map((q: Record<string, unknown>) => ({
+      ...q,
+      options: Array.isArray(q.options)
+        ? (q.options as Array<Record<string, unknown>>).map(({ isCorrect: _drop, ...rest }) => rest)
+        : q.options,
+    }));
+  }
+  return safe;
+};
+
+/**
+ * Student-safe attempt fetch. Only returns the attempt if it belongs
+ * to the caller — protects against IDOR. (Teachers use the existing
+ * `findAttempt`, which has no ownership check because it's behind the
+ * teacher-role gate.)
+ */
+export const findAttemptForStudent = async (
+  attemptId: string,
+  studentId: string
+): Promise<QuizAttemptDoc> => {
+  const a = await QuizAttempt.findById(attemptId);
+  if (!a) throw NotFound('Attempt not found');
+  if (a.student.toString() !== studentId) {
+    throw Forbidden('That attempt belongs to another student.');
+  }
+  return a;
+};
+
+/**
+ * Returns every QuizAttempt the caller has made, newest first, with
+ * the quiz's title + total marks attached so the UI / chat agent can
+ * render "you scored X / Y on quiz Z" without an N+1 follow-up.
+ *
+ * totalMarks is derived from the sum of question.points — it's not
+ * stored on Quiz directly, so we project it in the aggregation.
+ */
+export interface StudentAttemptSummary {
+  attemptId: string;
+  quizId: string;
+  quizTitle: string;
+  subjectLabel?: string;
+  status: string;
+  startedAt?: string;
+  submittedAt?: string;
+  gradedAt?: string;
+  score?: number;
+  totalMarks: number;
+  durationSeconds?: number;
+}
+
+export const listAttemptsForStudent = async (
+  studentId: string
+): Promise<StudentAttemptSummary[]> => {
+  const rows = await QuizAttempt.aggregate([
+    { $match: { student: new Types.ObjectId(studentId) } },
+    { $sort: { startedAt: -1 } },
+    {
+      $lookup: {
+        from: 'quizzes', localField: 'quiz', foreignField: '_id', as: 'quizDoc',
+      },
+    },
+    { $unwind: '$quizDoc' },
+    {
+      $lookup: {
+        from: 'subjects',
+        localField: 'quizDoc.subject',
+        foreignField: '_id',
+        as: 'subjectDoc',
+      },
+    },
+    {
+      $project: {
+        _id: 1,
+        quiz: 1,
+        status: 1,
+        startedAt: 1,
+        submittedAt: 1,
+        gradedAt: 1,
+        score: 1,
+        durationSeconds: 1,
+        quizTitle: '$quizDoc.title',
+        subjectLabel: { $arrayElemAt: ['$subjectDoc.name', 0] },
+        totalMarks: {
+          $sum: {
+            $map: {
+              input: { $ifNull: ['$quizDoc.questions', []] },
+              as: 'q',
+              in: { $ifNull: ['$$q.points', 0] },
+            },
+          },
+        },
+      },
+    },
+  ]);
+
+  return rows.map((r) => ({
+    attemptId: String(r._id),
+    quizId: String(r.quiz),
+    quizTitle: r.quizTitle,
+    subjectLabel: r.subjectLabel,
+    status: r.status,
+    startedAt: r.startedAt ? new Date(r.startedAt).toISOString() : undefined,
+    submittedAt: r.submittedAt ? new Date(r.submittedAt).toISOString() : undefined,
+    gradedAt: r.gradedAt ? new Date(r.gradedAt).toISOString() : undefined,
+    score: r.score,
+    totalMarks: r.totalMarks ?? 0,
+    durationSeconds: r.durationSeconds,
+  }));
+};
+
 export const gradeAttempt = async (
   attemptId: string,
   teacherId: string,

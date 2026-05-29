@@ -3,12 +3,13 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import {
   ClipboardList, FileText, ChevronLeft, ChevronRight, Plus, Pencil,
   Eye, Trash2, Search, Filter, MoreVertical, Upload as UploadIcon,
-  CheckCircle2, Hourglass, FileEdit, ClipboardCheck,
+  CheckCircle2, Hourglass, FileEdit, ClipboardCheck, Paperclip,
 } from 'lucide-react';
 import { AppLayout } from '../components/layout/AppLayout';
 import { useResources } from '../lib/resources/ResourcesContext';
 import type { Resource, ResourceKind } from '../lib/resources/types';
 import { ApiError } from '../lib/api';
+import { AttachmentPreviewModal } from '../components/ui/AttachmentPreviewModal';
 
 type StatusFilter = 'all' | 'draft' | 'published' | 'grading';
 
@@ -32,6 +33,7 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
   const [opError, setOpError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
   const [filterOpen, setFilterOpen] = useState(false);
+  const [previewItem, setPreviewItem] = useState<Resource | null>(null);
   const filterRef = useRef<HTMLDivElement>(null);
 
   const items = itemsForCurrent(kind);
@@ -298,6 +300,7 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
                 division={division}
                 onEdit={() => onEdit(item)}
                 onView={() => onView(item)}
+                onPreview={() => setPreviewItem(item)}
                 onPublish={() => onPublish(item)}
                 onDelete={() => onDelete(item)}
               />
@@ -319,6 +322,16 @@ export const ResourcesList: React.FC<Props> = ({ kind }) => {
           </>
         )}
       </div>
+
+      {previewItem && (
+        <AttachmentPreviewModal
+          title={previewItem.title}
+          attachments={previewItem.attachments.map(a => ({
+            name: a.name, url: a.url, mimeType: a.mimeType,
+          }))}
+          onClose={() => setPreviewItem(null)}
+        />
+      )}
     </AppLayout>
   );
 };
@@ -385,6 +398,7 @@ interface TableRowProps {
   division?: { code?: string } | undefined;
   onEdit: () => void;
   onView: () => void;
+  onPreview: () => void;
   onPublish: () => void;
   onDelete: () => void;
 }
@@ -395,7 +409,7 @@ const statusBadge = (bucket: TableRowProps['bucket']): { label: string; bg: stri
   return                       { label: 'Published', bg: '#DCFCE7', color: '#15803D' };
 };
 
-const TableRow: React.FC<TableRowProps> = ({ item, bucket, division, onEdit, onView, onPublish, onDelete }) => {
+const TableRow: React.FC<TableRowProps> = ({ item, bucket, division, onEdit, onView, onPreview, onPublish, onDelete }) => {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -494,6 +508,11 @@ const TableRow: React.FC<TableRowProps> = ({ item, bucket, division, onEdit, onV
 
       {/* Actions */}
       <div style={{ display: 'flex', gap: '0.35rem', alignItems: 'center', justifyContent: 'flex-end' }}>
+        {totalAttachments > 0 && (
+          <IconBtn label="Preview files" onClick={onPreview}>
+            <Paperclip size={15} />
+          </IconBtn>
+        )}
         {bucket === 'draft' ? (
           <>
             <IconBtn label="Publish" onClick={onPublish}><UploadIcon size={15} /></IconBtn>

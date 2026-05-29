@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { AppLayout } from '../components/layout/AppLayout';
 import {
-  FileQuestion, Plus, Filter, LayoutGrid, List, Eye, Trash2, EyeOff, Copy, BarChart2
+  FileQuestion, Plus, Filter, LayoutGrid, List, Eye, Trash2, EyeOff, Copy, BarChart2,
+  X, CheckCircle2, Loader2,
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
@@ -60,6 +61,7 @@ export const TeacherQuizOverview: React.FC = () => {
   const [divisionFilter, setDivisionFilter] = useState('All Divisions');
   const [subjectFilter, setSubjectFilter] = useState('All Subjects');
   const [statusFilter, setStatusFilter] = useState('All Statuses');
+  const [viewingQuizId, setViewingQuizId] = useState<string | null>(null);
 
   const handleDeleteQuiz = async (id: string) => {
     if (!window.confirm('Are you sure you want to delete this quiz?')) return;
@@ -231,7 +233,13 @@ export const TeacherQuizOverview: React.FC = () => {
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.4rem' }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    <h4 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#1E293B' }}>{quiz.title}</h4>
+                    <h4
+                      onClick={() => setViewingQuizId(quiz.id)}
+                      title="Preview questions"
+                      style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#1E293B', cursor: 'pointer' }}
+                    >
+                      {quiz.title}
+                    </h4>
                     <span style={{ 
                       backgroundColor: quiz.status === 'Published' ? '#EFFDF5' : quiz.status === 'Scheduled' ? '#FEFBF0' : '#F1F5F9',
                       color: quiz.status === 'Published' ? '#10B981' : quiz.status === 'Scheduled' ? '#F59E0B' : '#475569',
@@ -306,7 +314,11 @@ export const TeacherQuizOverview: React.FC = () => {
                 </div>
 
                 <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center' }}>
-                  <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
+                  <button
+                    onClick={() => setViewingQuizId(quiz.id)}
+                    title="Preview questions"
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}
+                  >
                     <Eye size={18} />
                   </button>
                   <button style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748B' }}>
@@ -329,6 +341,173 @@ export const TeacherQuizOverview: React.FC = () => {
           Load More Quizzes
         </button>
       </div>
+
+      {viewingQuizId && (
+        <QuizQuestionsModal
+          quizId={viewingQuizId}
+          onClose={() => setViewingQuizId(null)}
+        />
+      )}
     </AppLayout>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Quiz questions preview modal                                              */
+/* -------------------------------------------------------------------------- */
+
+interface QuizQuestionsModalProps {
+  quizId: string;
+  onClose: () => void;
+}
+
+const QuizQuestionsModal: React.FC<QuizQuestionsModalProps> = ({ quizId, onClose }) => {
+  const [quiz, setQuiz] = useState<any | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const api = await import('../lib/quiz/api');
+        const res = await api.getQuiz(quizId);
+        if (!cancelled) setQuiz(res.quiz);
+      } catch (e: any) {
+        if (!cancelled) setError(e?.message || 'Failed to load quiz');
+      }
+    })();
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      cancelled = true;
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [quizId, onClose]);
+
+  const questions: any[] = quiz?.questions ?? [];
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(15, 23, 42, 0.55)',
+        display: 'flex', alignItems: 'center', justifyContent: 'center',
+        padding: '1.25rem', zIndex: 200,
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 820, maxHeight: '88vh',
+          background: 'white', borderRadius: '0.75rem',
+          boxShadow: '0 20px 50px rgba(15, 23, 42, 0.3)',
+          display: 'flex', flexDirection: 'column', overflow: 'hidden',
+        }}
+      >
+        <div style={{
+          display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start',
+          padding: '1rem 1.25rem', borderBottom: '1px solid #E2E8F0',
+        }}>
+          <div style={{ minWidth: 0 }}>
+            <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 800, color: '#0F172A' }}>
+              {quiz?.title ?? 'Loading…'}
+            </h3>
+            {quiz?.description && (
+              <p style={{ margin: '0.3rem 0 0', fontSize: '0.82rem', color: '#64748B', lineHeight: 1.55 }}>
+                {quiz.description}
+              </p>
+            )}
+            {quiz && (
+              <div style={{ fontSize: '0.72rem', color: '#64748B', marginTop: '0.4rem', fontWeight: 600 }}>
+                {questions.length} question{questions.length === 1 ? '' : 's'}
+                {quiz.totalMarks !== undefined && ` · ${quiz.totalMarks} marks`}
+                {quiz.settings?.timeLimitMinutes && ` · ${quiz.settings.timeLimitMinutes} min`}
+              </div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            aria-label="Close"
+            style={{
+              width: 30, height: 30, borderRadius: '0.4rem',
+              background: 'white', border: '1px solid #E2E8F0',
+              color: '#475569', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              flexShrink: 0,
+            }}
+          >
+            <X size={13} />
+          </button>
+        </div>
+
+        <div style={{ flex: 1, overflowY: 'auto', padding: '1rem 1.25rem' }}>
+          {error ? (
+            <div style={{ color: '#B91C1C', fontWeight: 600, fontSize: '0.85rem' }}>
+              {error}
+            </div>
+          ) : !quiz ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.45rem', color: '#64748B', fontSize: '0.85rem' }}>
+              <Loader2 size={16} className="animate-spin" /> Loading questions…
+            </div>
+          ) : questions.length === 0 ? (
+            <div style={{ color: '#64748B', fontSize: '0.85rem', textAlign: 'center', padding: '2rem' }}>
+              This quiz has no questions yet.
+            </div>
+          ) : (
+            <ol style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.85rem' }}>
+              {questions.map((q, qi) => (
+                <li
+                  key={q._id ?? qi}
+                  style={{
+                    border: '1px solid #E2E8F0', borderRadius: '0.6rem',
+                    padding: '0.85rem 1rem',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 700, fontSize: '0.92rem', color: '#0F172A' }}>
+                      Q{qi + 1}. {q.text}
+                    </div>
+                    <div style={{ fontSize: '0.72rem', fontWeight: 700, color: '#475569', whiteSpace: 'nowrap' }}>
+                      {q.points ?? 1} pt{(q.points ?? 1) === 1 ? '' : 's'} · {q.type}
+                    </div>
+                  </div>
+                  {(q.options ?? []).length > 0 && (
+                    <ul style={{ margin: 0, padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '0.3rem' }}>
+                      {q.options.map((opt: any, oi: number) => (
+                        <li
+                          key={opt._id ?? oi}
+                          style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '0.4rem 0.6rem',
+                            background: opt.isCorrect ? '#ECFDF5' : '#F8FAFC',
+                            border: `1px solid ${opt.isCorrect ? '#A7F3D0' : '#E2E8F0'}`,
+                            borderRadius: '0.4rem',
+                            fontSize: '0.83rem',
+                            color: opt.isCorrect ? '#14532D' : '#334155',
+                            fontWeight: opt.isCorrect ? 700 : 500,
+                          }}
+                        >
+                          <span style={{
+                            width: 20, height: 20, borderRadius: '50%',
+                            background: opt.isCorrect ? '#16A34A' : '#E2E8F0',
+                            color: opt.isCorrect ? 'white' : '#64748B',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: '0.7rem', fontWeight: 800, flexShrink: 0,
+                          }}>
+                            {String.fromCharCode(65 + oi)}
+                          </span>
+                          <span style={{ flex: 1 }}>{opt.text}</span>
+                          {opt.isCorrect && <CheckCircle2 size={14} color="#16A34A" />}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              ))}
+            </ol>
+          )}
+        </div>
+      </div>
+    </div>
   );
 };

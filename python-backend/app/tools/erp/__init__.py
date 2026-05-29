@@ -15,8 +15,10 @@ from app.tools.erp import (
     grading,
     quizzes,
     resources,
+    schedule,
     student,
     submissions,
+    vapi_call,
     whatsapp,
 )
 
@@ -69,8 +71,15 @@ def erp_tools() -> list[BaseTool]:
         student.my_submission_for_assignment,
         student.list_my_submissions,
         student.list_my_quizzes,
+        student.list_my_quiz_attempts,
         student.start_quiz_attempt,
         student.submit_quiz_attempt,
         # WhatsApp (out-of-band notifications via n8n).
         whatsapp.send_whatsapp_message,
+        # Vapi (outbound voice reminder calls).
+        vapi_call.make_reminder_call,
+        # Schedule — today's lectures + cancel/restore.
+        schedule.get_my_schedule_today,
+        schedule.cancel_lecture,
+        schedule.restore_lecture,
     ]

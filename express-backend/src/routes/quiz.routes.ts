@@ -10,6 +10,12 @@ router.use(requireAuth, requireActiveAccount);
 router.post('/quizzes/:id/start', requireRole('student'), ctl.startAttempt);
 router.post('/quizzes/submit', requireRole('student'), ctl.submitAttempt);
 router.get('/student/quizzes', requireRole('student'), ctl.listStudentQuizzes);
+// Order matters — '/attempts' (literal) and '/attempts/:id' must BOTH come
+// before the '/student/quizzes/:id' catch-all, otherwise "attempts" gets
+// interpreted as a quiz id.
+router.get('/student/quizzes/attempts', requireRole('student'), ctl.listStudentAttempts);
+router.get('/student/quizzes/attempts/:id', requireRole('student'), ctl.getStudentAttempt);
+router.get('/student/quizzes/:id', requireRole('student'), ctl.getStudentQuiz);
 
 /* Teacher */
 router.get('/quizzes', requireRole('teacher', 'admin'), ctl.listQuizzes);

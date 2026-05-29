@@ -16,8 +16,6 @@ interface AppLayoutProps {
   showSearch?: boolean;
   /** Optional bottom action bar pinned below the scroll area. */
   bottomBar?: React.ReactNode;
-  /** Show the teacher activity panel in the sidebar (default true for teacher role). */
-  showActivity?: boolean;
   /** Background colour override for the main scroll area. */
   background?: string;
   /** When true the content area is padded; set false to manage padding yourself. */
@@ -27,12 +25,11 @@ interface AppLayoutProps {
 export const AppLayout: React.FC<AppLayoutProps> = ({
   children,
   pageIcon, pageTitle, pageBreadcrumb, pageActions, showSearch,
-  bottomBar, showActivity, background, padded = true,
+  bottomBar, background, padded = true,
 }) => {
   const { collapsed, toggle } = useSidebarState();
   const { role } = useRole();
 
-  const sidebarActivity = showActivity ?? role === 'teacher';
   const useSearch = showSearch ?? (!pageTitle && !pageIcon);
 
   return (
@@ -41,7 +38,6 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
         isCollapsed={collapsed}
         onMenuToggle={toggle}
         role={role}
-        showActivity={sidebarActivity}
       />
       <div className="dashboard-main" style={background ? { background } : undefined}>
         <TopBar

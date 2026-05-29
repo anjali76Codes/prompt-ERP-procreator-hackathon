@@ -1,60 +1,71 @@
-import React, { useState } from 'react';
+/**
+ * Teacher dashboard — fully data-driven.
+ *
+ * Every widget reads from /me/teacher-overview, which the backend
+ * builds in one aggregate call (banner stats, courses, engagement
+ * heatmap, metrics, upcoming deadlines, at-risk students, agenda).
+ * The only static thing on this page is the QUICK_ACTIONS array,
+ * which is just a navigation menu.
+ */
+
+import React, { useEffect, useState } from 'react';
 import {
-  Calendar, Megaphone, FileSpreadsheet, BarChart, Send, CheckSquare, Plus, LayoutDashboard,
+  Calendar, Megaphone, FileSpreadsheet, BarChart, Send, CheckSquare,
+  LayoutDashboard, Loader2,
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { AppLayout } from '../components/layout/AppLayout';
+import { ApiError } from '../lib/api';
+import {
+  fetchTeacherOverview, type TeacherOverview,
+} from '../lib/teacherOverview/api';
 
-interface Course {
-  name: string;
-  status: 'Active' | 'Lab Only';
-  students: number;
-  avg: string;
-  progress: number;
-  color: string;
-  isLab: boolean;
-}
-
-const COURSES: Course[] = [
-  { name: 'Computer Science 101', status: 'Active',   students: 128, avg: '78%', progress: 78, color: '#0D8ABC', isLab: false },
-  { name: 'AI Algorithms',        status: 'Active',   students: 42,  avg: '84%', progress: 84, color: '#0D8ABC', isLab: false },
-  { name: 'Data Visualization',   status: 'Lab Only', students: 35,  avg: '91%', progress: 91, color: '#16A34A', isLab: true  },
+const QUICK_ACTIONS: { label: string; icon: React.ReactNode; path: string }[] = [
+  { label: 'Announcement', icon: <Megaphone size={20} color="var(--primary)" />,      path: '/announcements' },
+  { label: 'Grade Batch',  icon: <FileSpreadsheet size={20} color="var(--primary)" />, path: '/grade-batch' },
+  { label: 'Gen Report',   icon: <BarChart size={20} color="var(--primary)" />,        path: '/reports' },
+  { label: 'Notify Class', icon: <Send size={20} color="var(--primary)" />,            path: '/notify' },
 ];
 
-const HEATMAP: number[][] = [
-  [20, 30, 80, 40, 90, 10, 15],
-  [35, 95, 60, 45, 50, 12, 10],
-];
+const greetingForHour = (h: number): string => {
+  if (h < 12) return 'Good Morning';
+  if (h < 17) return 'Good Afternoon';
+  return 'Good Evening';
+};
 
-const AT_RISK = [
-  { name: 'Marcus Thorne', id: 'CS-2024-089', absences: 2, grade: 'D- (42%)', percent: 42,
-    avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=100&h=100&q=80' },
-];
+const dueDateBlock = (iso: string): { mon: string; day: string; isPast: boolean } => {
+  const d = new Date(iso);
+  return {
+    mon: d.toLocaleDateString(undefined, { month: 'short' }).toUpperCase(),
+    day: d.toLocaleDateString(undefined, { day: '2-digit' }),
+    isPast: d.getTime() < Date.now(),
+  };
+};
 
-const QUICK_ACTIONS = [
-  { label: 'Announcement', icon: <Megaphone size={20} color="var(--primary)" /> },
-  { label: 'Grade Batch',  icon: <FileSpreadsheet size={20} color="var(--primary)" /> },
-  { label: 'Gen Report',   icon: <BarChart size={20} color="var(--primary)" /> },
-  { label: 'Notify Class', icon: <Send size={20} color="var(--primary)" /> },
-];
+const dueTimeLabel = (iso: string): string => {
+  const d = new Date(iso);
+  return d.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' });
+};
 
 export const TeacherDashboard: React.FC = () => {
-  const [pendingReviews] = useState(42);
-  const [tasks, setTasks] = useState([
-    { id: 1, text: 'Review AI Algorithms Quiz submissions',  done: false },
-    { id: 2, text: 'Upload Mid-Term question paper',         done: true  },
-    { id: 3, text: 'Submit departmental research report',    done: false },
-  ]);
-  const [newTaskText, setNewTaskText] = useState('');
+  const navigate = useNavigate();
+  const [data, setData] = useState<TeacherOverview | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const toggleTask = (id: number) =>
-    setTasks(tasks.map(t => (t.id === id ? { ...t, done: !t.done } : t)));
+  useEffect(() => {
+    (async () => {
+      try {
+        setData(await fetchTeacherOverview());
+      } catch (e) {
+        setLoadError(e instanceof ApiError ? e.message : 'Failed to load dashboard');
+      } finally {
+        setLoading(false);
+      }
+    })();
+  }, []);
 
-  const addTask = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newTaskText.trim()) return;
-    setTasks([...tasks, { id: Date.now(), text: newTaskText, done: false }]);
-    setNewTaskText('');
-  };
+  const greeting = greetingForHour(new Date().getHours());
 
   return (
     <AppLayout
@@ -62,6 +73,12 @@ export const TeacherDashboard: React.FC = () => {
       pageTitle="Dashboard"
       pageBreadcrumb="Faculty Overview"
     >
+      {loadError && (
+        <div className="status-pill danger" style={{ marginBottom: '1rem', textTransform: 'none' }}>
+          {loadError}
+        </div>
+      )}
+
       <div className="dashboard-grid">
         {/* Left column */}
         <div className="stack-lg">
@@ -80,13 +97,24 @@ export const TeacherDashboard: React.FC = () => {
           >
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', position: 'relative', zIndex: 2 }}>
               <div style={{ maxWidth: '70%' }}>
-                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>Good Morning, Professor!</h2>
+                <h2 style={{ fontSize: '1.75rem', fontWeight: 700, margin: 0 }}>
+                  {greeting}, {data?.greeting.name?.split(' ').slice(-1)[0] ?? 'Professor'}!
+                </h2>
                 <p style={{ margin: '0.75rem 0 0', opacity: 0.9, lineHeight: 1.6, fontSize: '0.975rem' }}>
-                  You have 3 lectures today and {pendingReviews} pending reviews. Students are showing high engagement in "AI Algorithms".
+                  {loading ? 'Loading your day…' : (
+                    <>
+                      You have <strong>{data?.banner.lecturesToday ?? 0}</strong> lecture{(data?.banner.lecturesToday ?? 0) === 1 ? '' : 's'} today
+                      {' '}and <strong>{data?.banner.pendingReviews ?? 0}</strong> pending review{(data?.banner.pendingReviews ?? 0) === 1 ? '' : 's'}.
+                      {data?.banner.topEngagementSubject && (
+                        <> Students are showing strong engagement in "{data.banner.topEngagementSubject}".</>
+                      )}
+                    </>
+                  )}
                 </p>
               </div>
               <button
                 className="btn"
+                onClick={() => navigate('/attendance/schedules')}
                 style={{ backgroundColor: 'white', color: 'var(--primary)', fontWeight: 600 }}
               >
                 Daily Agenda
@@ -99,6 +127,7 @@ export const TeacherDashboard: React.FC = () => {
             {QUICK_ACTIONS.map(a => (
               <button
                 key={a.label}
+                onClick={() => navigate(a.path)}
                 className="card card-compact"
                 style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '0.5rem', cursor: 'pointer' }}
               >
@@ -114,40 +143,55 @@ export const TeacherDashboard: React.FC = () => {
           <div className="card">
             <div className="card-header">
               <h3 className="card-title-lg">Course Overview</h3>
-              <button className="alert-row-cta">Manage Courses</button>
+              <button
+                className="alert-row-cta"
+                onClick={() => navigate('/assignments/list')}
+              >
+                Manage Courses
+              </button>
             </div>
-            <div className="stack-md">
-              {COURSES.map(course => (
-                <div
-                  key={course.name}
-                  style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                      <span style={{ fontWeight: 600, fontSize: '0.925rem' }}>{course.name}</span>
-                      <span
-                        style={{
-                          fontSize: '0.675rem', fontWeight: 700, padding: '0.125rem 0.5rem', borderRadius: '0.25rem',
-                          backgroundColor: course.isLab ? '#F3F4F6' : '#EFF6FF',
-                          color: course.isLab ? 'var(--text-muted)' : 'var(--primary)',
-                        }}
-                      >
-                        {course.status}
-                      </span>
+            {loading ? (
+              <DashLoading />
+            ) : !data || data.courses.length === 0 ? (
+              <DashEmpty text="No courses linked to your account yet." />
+            ) : (
+              <div className="stack-md">
+                {data.courses.map(course => {
+                  const barColor =
+                    course.avgAttendancePct >= 85 ? '#16A34A' :
+                    course.avgAttendancePct >= 70 ? '#0D8ABC' : '#F59E0B';
+                  return (
+                    <div
+                      key={course.subjectId}
+                      style={{ padding: '1rem', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}
+                    >
+                      <div style={{ flex: 1 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <span style={{ fontWeight: 600, fontSize: '0.925rem' }}>{course.name}</span>
+                          <span
+                            style={{
+                              fontSize: '0.675rem', fontWeight: 700, padding: '0.125rem 0.5rem', borderRadius: '0.25rem',
+                              backgroundColor: '#EFF6FF', color: 'var(--primary)',
+                            }}
+                          >
+                            {course.code}
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          <span>👥 {course.studentCount} Students</span>
+                          <span>📈 {course.avgAttendancePct}% Avg</span>
+                        </div>
+                      </div>
+                      <div style={{ width: 120, marginLeft: '1rem' }}>
+                        <div style={{ height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
+                          <div style={{ height: '100%', width: `${course.progress}%`, backgroundColor: barColor, borderRadius: 3 }} />
+                        </div>
+                      </div>
                     </div>
-                    <div style={{ display: 'flex', gap: '1rem', marginTop: '0.5rem', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                      <span>👥 {course.students} Students</span>
-                      <span>📈 {course.avg} Avg</span>
-                    </div>
-                  </div>
-                  <div style={{ width: 120, marginLeft: '1rem' }}>
-                    <div style={{ height: 6, backgroundColor: '#E5E7EB', borderRadius: 3, overflow: 'hidden' }}>
-                      <div style={{ height: '100%', width: `${course.progress}%`, backgroundColor: course.color, borderRadius: 3 }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Engagement heatmap */}
@@ -155,53 +199,26 @@ export const TeacherDashboard: React.FC = () => {
             <div className="card-header" style={{ marginBottom: '0.5rem' }}>
               <h3 className="card-title-lg">Engagement Analytics</h3>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, backgroundColor: '#EFF6FF', borderRadius: 2 }} /> Low
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, backgroundColor: '#60A5FA', borderRadius: 2 }} /> Med
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
-                  <span style={{ display: 'inline-block', width: 8, height: 8, backgroundColor: 'var(--primary)', borderRadius: 2 }} /> High
-                </div>
+                <Legend color="#EFF6FF" label="Low" />
+                <Legend color="#60A5FA" label="Med" />
+                <Legend color="var(--primary)" label="High" />
                 <select style={{ border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.25rem 0.5rem', backgroundColor: 'white', fontWeight: 500 }}>
                   <option>Last 4 Weeks</option>
                 </select>
               </div>
             </div>
             <p style={{ color: 'var(--text-muted)', fontSize: '0.815rem', margin: '0 0 1.5rem' }}>
-              Weekly attendance & participation heatmap
+              Weekly attendance heatmap
             </p>
 
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
-                {['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'].map(d => <span key={d}>{d}</span>)}
-              </div>
-              {HEATMAP.map((row, rIdx) => (
-                <div key={rIdx} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
-                  {row.map((val, cIdx) => {
-                    const bg = val > 70 ? 'var(--primary)' : val > 30 ? '#60A5FA' : '#EFF6FF';
-                    return (
-                      <div
-                        key={cIdx}
-                        title={`${val}%`}
-                        style={{ height: 40, backgroundColor: bg, borderRadius: 'var(--radius-md)', opacity: val / 100 + 0.3 }}
-                      />
-                    );
-                  })}
-                </div>
-              ))}
-            </div>
-
-            <div style={{ marginTop: '1.5rem', backgroundColor: '#F9FAFB', borderRadius: 'var(--radius-md)', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
-              <div style={{ textAlign: 'center' }}>
-                <div style={{ fontSize: '0.675rem', fontWeight: 700, color: 'var(--text-muted)' }}>AVERAGE</div>
-                <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}>88.4%</div>
-              </div>
-              <div style={{ fontSize: '0.815rem', color: 'var(--text-muted)', borderLeft: '1px solid var(--border-color)', paddingLeft: '1rem', lineHeight: 1.4 }}>
-                Peak engagement occurs on Wednesdays during 10:00 AM sessions. Consider scheduling complex labs during this window.
-              </div>
-            </div>
+            {loading ? (
+              <DashLoading />
+            ) : (
+              <Heatmap
+                rows={data?.engagementHeatmap ?? []}
+                avg={data?.averageEngagementPct ?? 0}
+              />
+            )}
           </div>
         </div>
 
@@ -212,128 +229,283 @@ export const TeacherDashboard: React.FC = () => {
             <div className="metric-card">
               <div className="metric-card-body">
                 <span className="metric-card-label" style={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.675rem' }}>Attendance</span>
-                <span className="metric-card-value" style={{ fontSize: '1.5rem' }}>94.2%</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#16A34A' }}>+2%</span>
+                <span className="metric-card-value" style={{ fontSize: '1.5rem' }}>
+                  {loading ? '—' : `${data?.metrics.attendancePct ?? 0}%`}
+                </span>
+                {data && (
+                  <span style={{
+                    fontSize: '0.75rem', fontWeight: 600,
+                    color: (data.metrics.attendanceDeltaPct ?? 0) >= 0 ? '#16A34A' : '#DC2626',
+                  }}>
+                    {data.metrics.attendanceDeltaPct >= 0 ? '+' : ''}
+                    {data.metrics.attendanceDeltaPct}%
+                  </span>
+                )}
               </div>
             </div>
             <div className="metric-card">
               <div className="metric-card-body">
                 <span className="metric-card-label" style={{ textTransform: 'uppercase', letterSpacing: '0.5px', fontSize: '0.675rem' }}>At-Risk</span>
-                <span className="metric-card-value" style={{ fontSize: '1.5rem', color: '#DC2626' }}>08</span>
-                <span style={{ fontSize: '0.75rem', fontWeight: 600, color: '#DC2626' }}>Alert</span>
+                <span className="metric-card-value" style={{
+                  fontSize: '1.5rem',
+                  color: (data?.metrics.atRiskCount ?? 0) > 0 ? '#DC2626' : '#0F172A',
+                }}>
+                  {loading ? '—' : String(data?.metrics.atRiskCount ?? 0).padStart(2, '0')}
+                </span>
+                <span style={{
+                  fontSize: '0.75rem', fontWeight: 600,
+                  color: (data?.metrics.atRiskCount ?? 0) > 0 ? '#DC2626' : '#64748B',
+                }}>
+                  {(data?.metrics.atRiskCount ?? 0) > 0 ? 'Alert' : 'All clear'}
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Upcoming Exams */}
+          {/* Upcoming deadlines */}
           <div className="card">
             <div className="card-header" style={{ marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '0.975rem', fontWeight: 700 }}>Upcoming Exams</h3>
+              <h3 style={{ margin: 0, fontSize: '0.975rem', fontWeight: 700 }}>Upcoming Deadlines</h3>
               <Calendar size={16} color="var(--text-muted)" />
             </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                <div style={{ backgroundColor: '#EFF6FF', color: 'var(--primary)', padding: '0.5rem', borderRadius: 'var(--radius-md)', textAlign: 'center', minWidth: 45 }}>
-                  <div style={{ fontSize: '0.625rem', fontWeight: 700 }}>OCT</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800 }}>24</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>Mid-Term: Data Structures</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>10:00 AM • Exam Hall B</div>
-                </div>
+            {loading ? (
+              <DashLoading />
+            ) : !data || data.upcomingItems.length === 0 ? (
+              <DashEmpty text="No upcoming deadlines." />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {data.upcomingItems.map(item => {
+                  const d = dueDateBlock(item.dueDate);
+                  return (
+                    <button
+                      key={item.id}
+                      onClick={() => navigate(`/assignments/list/${item.id}/review`)}
+                      style={{
+                        display: 'flex', gap: '1rem', alignItems: 'flex-start',
+                        background: 'transparent', border: 'none', padding: 0,
+                        cursor: 'pointer', textAlign: 'left',
+                      }}
+                    >
+                      <div style={{
+                        backgroundColor: d.isPast ? '#FEF3C7' : '#EFF6FF',
+                        color: d.isPast ? '#B45309' : 'var(--primary)',
+                        padding: '0.5rem', borderRadius: 'var(--radius-md)',
+                        textAlign: 'center', minWidth: 45,
+                      }}>
+                        <div style={{ fontSize: '0.625rem', fontWeight: 700 }}>{d.mon}</div>
+                        <div style={{ fontSize: '1rem', fontWeight: 800 }}>{d.day}</div>
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{item.title}</div>
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>
+                          {dueTimeLabel(item.dueDate)}
+                          {item.subjectLabel ? ` • ${item.subjectLabel}` : ''}
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })}
               </div>
-              <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
-                <div style={{ backgroundColor: '#F3F4F6', color: 'var(--text-muted)', padding: '0.5rem', borderRadius: 'var(--radius-md)', textAlign: 'center', minWidth: 45 }}>
-                  <div style={{ fontSize: '0.625rem', fontWeight: 700 }}>OCT</div>
-                  <div style={{ fontSize: '1rem', fontWeight: 800 }}>27</div>
-                </div>
-                <div>
-                  <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>Project: AI Ethics</div>
-                  <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '0.125rem' }}>11:59 PM • Online Portal</div>
-                </div>
-              </div>
-            </div>
+            )}
           </div>
 
           {/* At-Risk Students */}
           <div className="card" style={{ position: 'relative' }}>
             <div className="card-header" style={{ marginBottom: '1rem' }}>
               <h3 style={{ margin: 0, fontSize: '0.975rem', fontWeight: 700 }}>At-Risk Students</h3>
-              <button className="alert-row-cta">View All 08 Students</button>
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-              {AT_RISK.map(student => (
-                <div
-                  key={student.id}
-                  style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem' }}
+              {(data?.metrics.atRiskCount ?? 0) > 0 && (
+                <button
+                  className="alert-row-cta"
+                  onClick={() => navigate('/attendance')}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
-                    <img src={student.avatar} alt={student.name} style={{ width: '2.5rem', height: '2.5rem', borderRadius: '50%', objectFit: 'cover' }} />
-                    <div>
-                      <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{student.name}</div>
-                      <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        ID: {student.id} • {student.absences} Absences
+                  View all {String(data!.metrics.atRiskCount).padStart(2, '0')}
+                </button>
+              )}
+            </div>
+            {loading ? (
+              <DashLoading />
+            ) : !data || data.atRiskStudents.length === 0 ? (
+              <DashEmpty text="No students below 75% attendance — nice work!" />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+                {data.atRiskStudents.map(student => {
+                  const initials = student.name
+                    .split(' ').slice(0, 2).map(w => w[0]?.toUpperCase() ?? '').join('');
+                  return (
+                    <div
+                      key={student.studentId}
+                      style={{ display: 'flex', alignItems: 'center', border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.75rem' }}
+                    >
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: 1 }}>
+                        <div style={{
+                          width: '2.5rem', height: '2.5rem', borderRadius: '50%',
+                          background: '#FEE2E2', color: '#B91C1C',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          fontWeight: 800, fontSize: '0.85rem',
+                        }}>
+                          {initials || '?'}
+                        </div>
+                        <div>
+                          <div style={{ fontSize: '0.875rem', fontWeight: 600 }}>{student.name}</div>
+                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
+                            {student.rollNumber ? `${student.rollNumber} • ` : ''}
+                            {student.divisionLabel ? `${student.divisionLabel} • ` : ''}
+                            {student.absences} Absences
+                          </div>
+                        </div>
+                      </div>
+                      <div style={{ textAlign: 'right', marginRight: '0.5rem' }}>
+                        <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#DC2626' }}>
+                          {student.attendancePct}%
+                        </div>
+                        <div style={{ width: 60, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, overflow: 'hidden', marginTop: '0.25rem', display: 'inline-block' }}>
+                          <div style={{ height: '100%', width: `${student.attendancePct}%`, backgroundColor: '#DC2626' }} />
+                        </div>
                       </div>
                     </div>
-                  </div>
-                  <div style={{ textAlign: 'right', marginRight: '0.5rem' }}>
-                    <div style={{ fontSize: '0.875rem', fontWeight: 700, color: '#DC2626' }}>{student.grade}</div>
-                    <div style={{ width: 60, height: 4, backgroundColor: '#E5E7EB', borderRadius: 2, overflow: 'hidden', marginTop: '0.25rem', display: 'inline-block' }}>
-                      <div style={{ height: '100%', width: `${student.percent}%`, backgroundColor: '#DC2626' }} />
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </div>
-
-            <button
-              aria-label="Add at-risk student"
-              style={{
-                position: 'absolute', bottom: '1rem', right: '1rem',
-                width: '2.5rem', height: '2.5rem', borderRadius: '50%',
-                backgroundColor: 'var(--primary)', color: 'white', border: 'none',
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)', cursor: 'pointer',
-              }}
-            >
-              <Plus size={20} />
-            </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
-          {/* Personal Tasks */}
+          {/* Agenda */}
           <div className="card">
             <div className="card-header" style={{ marginBottom: '1rem' }}>
-              <h3 style={{ margin: 0, fontSize: '0.975rem', fontWeight: 700 }}>Personal Agenda & Tasks</h3>
+              <h3 style={{ margin: 0, fontSize: '0.975rem', fontWeight: 700 }}>Today's Agenda</h3>
               <CheckSquare size={16} color="var(--primary)" />
             </div>
-            <form onSubmit={addTask} style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
-              <input
-                type="text"
-                placeholder="Add task..."
-                value={newTaskText}
-                onChange={e => setNewTaskText(e.target.value)}
-                style={{ flex: 1, border: '1px solid var(--border-color)', borderRadius: 'var(--radius-md)', padding: '0.375rem 0.75rem', fontSize: '0.815rem', outline: 'none' }}
-              />
-              <button type="submit" className="btn btn-primary btn-sm">Add</button>
-            </form>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-              {tasks.map(task => (
-                <label key={task.id} style={{ display: 'flex', alignItems: 'flex-start', gap: '0.5rem', cursor: 'pointer', fontSize: '0.815rem' }}>
-                  <input
-                    type="checkbox"
-                    checked={task.done}
-                    onChange={() => toggleTask(task.id)}
-                    style={{ marginTop: '0.125rem', accentColor: 'var(--primary)' }}
-                  />
-                  <span style={{ textDecoration: task.done ? 'line-through' : 'none', color: task.done ? 'var(--text-muted)' : 'var(--text-main)', lineHeight: 1.3 }}>
-                    {task.text}
-                  </span>
-                </label>
-              ))}
-            </div>
+            {loading ? (
+              <DashLoading />
+            ) : !data ? (
+              <DashEmpty text="—" />
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '0.6rem' }}>
+                {data.agendaTasks.map(task => (
+                  <button
+                    key={task.id}
+                    onClick={() => task.link && navigate(task.link)}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: '0.6rem',
+                      cursor: task.link ? 'pointer' : 'default',
+                      fontSize: '0.85rem',
+                      background: 'transparent', border: 'none', padding: 0,
+                      textAlign: 'left',
+                    }}
+                  >
+                    <div style={{
+                      width: 16, height: 16, borderRadius: 4,
+                      border: '1.5px solid #CBD5E1',
+                      background: task.done ? 'var(--primary)' : 'white',
+                      borderColor: task.done ? 'var(--primary)' : '#CBD5E1',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      flexShrink: 0,
+                    }}>
+                      {task.done && (
+                        <CheckSquare size={11} color="white" strokeWidth={3} />
+                      )}
+                    </div>
+                    <span style={{
+                      textDecoration: task.done ? 'line-through' : 'none',
+                      color: task.done ? 'var(--text-muted)' : 'var(--text-main)',
+                      lineHeight: 1.3,
+                    }}>
+                      {task.text}
+                    </span>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
       </div>
     </AppLayout>
+  );
+};
+
+/* -------------------------------------------------------------------------- */
+/*  Internal widgets                                                            */
+/* -------------------------------------------------------------------------- */
+
+const DashLoading: React.FC = () => (
+  <div style={{ padding: '1.5rem', display: 'flex', alignItems: 'center', gap: '0.4rem', color: '#64748B', fontSize: '0.85rem' }}>
+    <Loader2 size={14} className="animate-spin" /> Loading…
+  </div>
+);
+
+const DashEmpty: React.FC<{ text: string }> = ({ text }) => (
+  <div style={{ padding: '1.25rem', color: '#64748B', fontSize: '0.85rem', textAlign: 'center' }}>
+    {text}
+  </div>
+);
+
+const Legend: React.FC<{ color: string; label: string }> = ({ color, label }) => (
+  <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+    <span style={{ display: 'inline-block', width: 8, height: 8, backgroundColor: color, borderRadius: 2 }} />
+    {label}
+  </div>
+);
+
+const Heatmap: React.FC<{
+  rows: Array<Array<number | null>>;
+  avg: number;
+}> = ({ rows, avg }) => {
+  const labels = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+  // Render at least one row so the widget isn't an empty grid.
+  const displayRows = rows.length > 0 ? rows : [Array(7).fill(null)];
+
+  // Find the day-of-week with the highest avg across all weeks for the
+  // "Peak engagement" caller-out below the grid.
+  const colAvgs = labels.map((_, i) => {
+    const vals = displayRows.map(r => r[i]).filter((v): v is number => v != null);
+    return vals.length > 0 ? vals.reduce((a, b) => a + b, 0) / vals.length : 0;
+  });
+  const peakIdx = colAvgs.reduce((maxIdx, v, i) => v > colAvgs[maxIdx]! ? i : maxIdx, 0);
+  const peakLabel = labels[peakIdx];
+
+  return (
+    <>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem', textAlign: 'center', fontSize: '0.75rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+          {labels.map(d => <span key={d}>{d}</span>)}
+        </div>
+        {displayRows.map((row, rIdx) => (
+          <div key={rIdx} style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '0.5rem' }}>
+            {row.map((val, cIdx) => {
+              const empty = val == null;
+              const v = val ?? 0;
+              const bg = empty ? '#F8FAFC'
+                : v > 70 ? 'var(--primary)'
+                : v > 30 ? '#60A5FA'
+                : '#EFF6FF';
+              return (
+                <div
+                  key={cIdx}
+                  title={empty ? 'No class' : `${v}%`}
+                  style={{
+                    height: 40, backgroundColor: bg,
+                    borderRadius: 'var(--radius-md)',
+                    opacity: empty ? 0.6 : (v / 100) + 0.3,
+                  }}
+                />
+              );
+            })}
+          </div>
+        ))}
+      </div>
+
+      <div style={{ marginTop: '1.5rem', backgroundColor: '#F9FAFB', borderRadius: 'var(--radius-md)', padding: '1rem', display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: '0.675rem', fontWeight: 700, color: 'var(--text-muted)' }}>AVERAGE</div>
+          <div style={{ fontSize: '1.25rem', fontWeight: 700, color: 'var(--primary)' }}>{avg}%</div>
+        </div>
+        <div style={{ fontSize: '0.815rem', color: 'var(--text-muted)', borderLeft: '1px solid var(--border-color)', paddingLeft: '1rem', lineHeight: 1.4 }}>
+          {avg > 0
+            ? <>Peak engagement occurs on <strong>{peakLabel}</strong>. Consider scheduling complex labs during this window.</>
+            : <>No attendance data yet for the last 4 weeks. Mark a few lectures to see patterns emerge.</>}
+        </div>
+      </div>
+    </>
   );
 };
