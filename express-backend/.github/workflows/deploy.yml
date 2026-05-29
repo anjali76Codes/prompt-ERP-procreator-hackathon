@@ -19,12 +19,22 @@ jobs:
           key: ${{ secrets.EC2_SSH_KEY }}
 
           script: |
-            cd /home/ubuntu/YOUR_REPO_NAME
+            set -e
 
-            git pull origin main
+            # Path to the checkout on EC2. Set the EC2_APP_DIR repo variable
+            # (Settings → Secrets and variables → Actions → Variables) so we
+            # don't have a literal placeholder in the workflow. Fallback path
+            # matches the convention used by the existing pm2 process.
+            APP_DIR="${{ vars.EC2_APP_DIR }}"
+            if [ -z "$APP_DIR" ]; then APP_DIR="/home/ubuntu/prompt-ERP-procreator-hackathon/express-backend"; fi
+
+            cd "$APP_DIR"
+
+            git fetch --all
+            git reset --hard origin/main
 
             npm install
-
             npm run build
 
-            pm2 restart my-app || pm2 start dist/index.js --name my-app
+            pm2 restart prompt-erp-backend \
+              || pm2 start dist/index.js --name prompt-erp-backend
