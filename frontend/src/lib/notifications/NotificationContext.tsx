@@ -20,7 +20,7 @@ const Ctx = createContext<NotificationContextValue | null>(null);
 const POLL_MS = 30_000;
 
 export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const { user } = useAuth();
+  const { user, logout } = useAuth();
   const [notifications, setNotifications] = useState<AppNotification[]>([]);
   const [unread, setUnread] = useState(0);
   const [loading, setLoading] = useState(false);
@@ -52,7 +52,14 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
       setUnread(count);
     } catch { /* silent — polling will retry */ }
     finally { setLoading(false); }
-  }, [user]);
+  } catch (err) {
+      if (err instanceof api.ApiError && (err.status === 401 || err.status === 403)) {
+        logout();
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, [user, logout]);
 
   useEffect(() => {
     if (!user) {

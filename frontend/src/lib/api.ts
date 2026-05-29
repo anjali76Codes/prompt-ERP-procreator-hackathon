@@ -33,7 +33,8 @@ interface RequestOptions {
 
 export const apiRequest = async <T>(path: string, opts: RequestOptions = {}): Promise<T> => {
   const { method = 'GET', body, auth = true } = opts;
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  const headers: Record<string, string> = {};
+  if (body) headers['Content-Type'] = 'application/json';
   if (auth) {
     const token = getToken();
     if (token) headers.Authorization = `Bearer ${token}`;
