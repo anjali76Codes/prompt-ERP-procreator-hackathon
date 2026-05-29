@@ -3,6 +3,7 @@ import React, {
 } from 'react';
 import { toast } from 'react-toastify';
 import * as api from './api';
+import { ApiError } from '../api';
 import type { AppNotification } from './types';
 import { useAuth } from '../auth/AuthContext';
 
@@ -50,12 +51,11 @@ export const NotificationProvider: React.FC<{ children: React.ReactNode }> = ({ 
 
       setNotifications(list);
       setUnread(count);
-    } catch { /* silent — polling will retry */ }
-    finally { setLoading(false); }
-  } catch (err) {
-      if (err instanceof api.ApiError && (err.status === 401 || err.status === 403)) {
+    } catch (err) {
+      if (err instanceof ApiError && (err.status === 401 || err.status === 403)) {
         logout();
       }
+      // silent — polling will retry otherwise
     } finally {
       setLoading(false);
     }
