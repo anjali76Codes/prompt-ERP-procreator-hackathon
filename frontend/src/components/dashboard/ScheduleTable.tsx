@@ -7,7 +7,7 @@ interface ScheduleItem {
   type: string;
   instructor: string;
   location: string;
-  status: 'ONGOING' | 'UPCOMING';
+  status: 'ONGOING' | 'UPCOMING' | 'COMPLETED';
 }
 
 interface ScheduleTableProps {
@@ -46,9 +46,13 @@ export const ScheduleTable: React.FC<ScheduleTableProps> = ({ items }) => {
                   <span style={{ backgroundColor: '#16A34A', color: 'white', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.65rem', fontWeight: 700 }}>
                     ONGOING
                   </span>
-                ) : (
+                ) : item.status === 'UPCOMING' ? (
                   <span style={{ backgroundColor: '#F3F4F6', color: 'var(--text-muted)', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.65rem', fontWeight: 700 }}>
                     UPCOMING
+                  </span>
+                ) : (
+                  <span style={{ backgroundColor: '#E2E8F0', color: '#475569', padding: '0.25rem 0.5rem', borderRadius: '0.25rem', fontSize: '0.65rem', fontWeight: 700 }}>
+                    COMPLETED
                   </span>
                 )}
               </td>
