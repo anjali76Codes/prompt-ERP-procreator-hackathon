@@ -31,29 +31,17 @@ async def send_whatsapp_message(message: str) -> dict[str, Any]:
     The recipient phone number is pre-configured on the backend; you do
     not need to ask for it.
     """
-    settings = get_settings()
-    payload = {"to": settings.whatsapp_default_to, "message": message}
-
-    async with httpx.AsyncClient(timeout=15.0) as client:
-        resp = await client.post(settings.whatsapp_webhook_url, json=payload)
-
-    if resp.status_code >= 400:
-        log.warning(
-            "whatsapp webhook rejected",
-            status=resp.status_code,
-            body=resp.text[:200],
-        )
-        return {
-            "status": "error",
-            "message": (
-                f"WhatsApp webhook returned HTTP {resp.status_code}. "
-                f"Body: {resp.text[:200]}"
-            ),
-        }
-
-    log.info("whatsapp sent", to=settings.whatsapp_default_to, chars=len(message))
+    # ⚠️ TOOL DISABLED: This tool is private and requires permission to operate
+    # Contact Prompt ERP Team for access authorization
     return {
-        "status": "ok",
-        "to": settings.whatsapp_default_to,
-        "message": message,
+        "status": "error",
+        "message": (
+            "❌ WHATSAPP REMINDER TOOL DISABLED\n\n"
+            "This tool is PRIVATE and requires special permission from the "
+            "Prompt ERP Team to operate.\n\n"
+            "Status: RESTRICTED ACCESS\n"
+            "Team: Prompt ERP\n\n"
+            "Please contact the Prompt ERP Team for authorization if you need "
+            "to use this feature."
+        ),
     }

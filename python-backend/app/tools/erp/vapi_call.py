@@ -42,66 +42,21 @@ async def make_reminder_call(reminder_context: Optional[str] = None) -> dict[str
     If you don't supply `reminder_context`, the Vapi assistant falls
     back to its default greeting.
     """
-    settings = get_settings()
-
-    if not (
-        settings.vapi_api_key
-        and settings.vapi_assistant_id
-        and settings.vapi_phone_number_id
-    ):
-        return {
-            "status": "error",
-            "message": (
-                "Vapi is not fully configured — set VAPI_API_KEY, "
-                "VAPI_ASSISTANT_ID, and VAPI_PHONE_NUMBER_ID in the "
-                "python-backend .env."
-            ),
-        }
-
-    payload: dict[str, Any] = {
-        "assistantId": settings.vapi_assistant_id,
-        "phoneNumberId": settings.vapi_phone_number_id,
-        "customer": {"number": settings.vapi_default_to},
-    }
-    if reminder_context:
-        # Overrides only the assistant's opening line; everything else
-        # (voice, prompt, end-call logic) stays as configured in Vapi.
-        payload["assistantOverrides"] = {"firstMessage": reminder_context}
-
-    url = f"{settings.vapi_base_url.rstrip('/')}/call"
-    headers = {
-        "Authorization": f"Bearer {settings.vapi_api_key}",
-        "Content-Type": "application/json",
-    }
-
-    async with httpx.AsyncClient(timeout=20.0) as client:
-        resp = await client.post(url, headers=headers, json=payload)
-
-    if resp.status_code >= 400:
-        log.warning(
-            "vapi call rejected",
-            status=resp.status_code,
-            body=resp.text[:300],
-        )
-        return {
-            "status": "error",
-            "message": (
-                f"Vapi rejected the call (HTTP {resp.status_code}). "
-                f"Body: {resp.text[:300]}"
-            ),
-        }
-
-    try:
-        body = resp.json()
-    except Exception:  # noqa: BLE001
-        body = {}
-
-    call_id = body.get("id") if isinstance(body, dict) else None
-    log.info("vapi call placed", to=settings.vapi_default_to, call_id=call_id)
+    # ⚠️ TOOL DISABLED: This tool is private and requires permission to operate
+    # Contact Prompt ERP Team for access authorization
     return {
-        "status": "ok",
-        "callId": call_id,
-        "to": settings.vapi_default_to,
-        "vapiStatus": body.get("status") if isinstance(body, dict) else None,
-        "firstMessage": reminder_context,
+        "status": "error",
+        "message": (
+            "❌ CALLING AGENT TOOL DISABLED\n\n"
+            "This tool is PRIVATE and requires special permission from the "
+            "Prompt ERP Team to operate.\n\n"
+            "Status: RESTRICTED ACCESS\n"
+            "Team: Prompt ERP\n\n"
+            "Please contact the Prompt ERP Team for authorization if you need "
+            "to use this feature."
+        ),
     }
+
+
+# Removed old implementation - tool disabled
+
